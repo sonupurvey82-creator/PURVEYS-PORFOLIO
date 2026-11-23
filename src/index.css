@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    background-color: #0b0908;
+    color: #f7f1e8;
+    font-family: var(--font-sans);
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+  }
+}
+
+/* Subtle Bengal Tiger diagonal stripe hairline texture used sparingly for stage framing */
+.tiger-stripe-hairline {
+  background-image: repeating-linear-gradient(
+    -55deg,
+    rgba(249, 115, 22, 0.055) 0px,
+    rgba(249, 115, 22, 0.055) 2px,
+    transparent 2px,
+    transparent 28px
+  );
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

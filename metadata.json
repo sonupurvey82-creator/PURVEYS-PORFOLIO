@@ -1,0 +1,6 @@
+{
+  "name": "Tigris Reel",
+  "description": "A clean tiger-themed homepage featuring an adaptive horizontal 3D video carousel with drag-to-scroll browsing for your personal video gallery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
