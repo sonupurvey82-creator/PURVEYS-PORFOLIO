@@ -12,4 +12,7 @@ export interface YouTubeChannel {
   url: string;
   createdAt: number;
   logoObjectUrl?: string;
+  logoMediaId?: string;
+  logoChunkCount?: number;
+  logoMimeType?: string;
 }

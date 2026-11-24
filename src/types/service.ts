@@ -7,6 +7,9 @@ export interface ExtraService {
   mediaKind?: ServiceWorkMediaKind;
   mediaObjectUrl?: string;
   mediaAspectRatio?: number;
+  mediaId?: string;
+  mediaChunkCount?: number;
+  mediaMimeType?: string;
   createdAt: number;
 }
 

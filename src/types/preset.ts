@@ -21,6 +21,11 @@ export interface PresetItem {
   fileObjectUrl: string;
   previewKind?: PresetPreviewKind;
   previewObjectUrl?: string;
+  fileMediaId?: string;
+  fileChunkCount?: number;
+  previewMediaId?: string;
+  previewChunkCount?: number;
+  previewMimeType?: string;
   downloads: number;
   createdAt: number;
 }

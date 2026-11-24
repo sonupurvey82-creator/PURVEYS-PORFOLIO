@@ -16,6 +16,7 @@ import { isImageFile } from '../utils/imageStorage';
 import { isVideoFile } from '../utils/videoStorage';
 
 interface ExtraServicesSectionProps {
+  canEdit: boolean;
   services: ExtraService[];
   presetsCount: number;
   onOpenPresets: () => void;
@@ -30,6 +31,7 @@ interface ExtraServicesSectionProps {
 }
 
 export const ExtraServicesSection: React.FC<ExtraServicesSectionProps> = ({
+  canEdit,
   services,
   presetsCount,
   onOpenPresets,
@@ -200,23 +202,29 @@ export const ExtraServicesSection: React.FC<ExtraServicesSectionProps> = ({
           </span>
         </h2>
 
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>Add Service</span>
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Add Service</span>
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-        {/* Built-in PRESETS Image Card — clicking opens the dedicated Presets Upload & Download page */}
+        {/* Built-in PRESETS Image Card — clicking opens the dedicated Presets page */}
         <article className="group relative h-60 overflow-hidden rounded-2xl border border-[#F97316]/30 bg-[#08150D] shadow-[0_14px_34px_-12px_rgba(0,0,0,0.65)] transition-[transform,border-color] duration-200 hover:-translate-y-0.5 hover:border-[#FF6B00]/80 sm:h-64">
           <button
             type="button"
             onClick={onOpenPresets}
-            aria-label="Open Presets page to upload and download presets"
+            aria-label={
+              canEdit
+                ? 'Open Presets page to upload and download presets'
+                : 'Open Presets library to browse and download presets'
+            }
             className="relative block h-full w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
           >
             {presetsImageFailed ? (
@@ -242,9 +250,13 @@ export const ExtraServicesSection: React.FC<ExtraServicesSectionProps> = ({
                   Presets Library
                 </h3>
                 <p className="mt-1 text-sm leading-relaxed text-[#E4DCD2]">
-                  {presetsCount > 0
-                    ? `Browse and download ${presetsCount} ${presetsCount === 1 ? 'preset' : 'presets'} or upload new packs.`
-                    : 'Open the Presets page to upload your presets for visitors to download.'}
+                  {canEdit
+                    ? presetsCount > 0
+                      ? `Browse and download ${presetsCount} ${presetsCount === 1 ? 'preset' : 'presets'} or upload new packs.`
+                      : 'Open the Presets page to upload your presets for visitors to download.'
+                    : presetsCount > 0
+                      ? `Browse and download ${presetsCount} curated ${presetsCount === 1 ? 'preset' : 'presets'}.`
+                      : 'Open the Presets library to explore and download curated packs.'}
                 </p>
               </div>
             </div>
@@ -256,27 +268,29 @@ export const ExtraServicesSection: React.FC<ExtraServicesSectionProps> = ({
               key={service.id}
               className="group relative h-60 overflow-hidden rounded-2xl border border-white/15 bg-[#08150D] shadow-[0_14px_34px_-12px_rgba(0,0,0,0.65)] transition-[transform,border-color] duration-200 hover:-translate-y-0.5 hover:border-[#FF6B00]/55 sm:h-64"
             >
-              {/* Edit / Delete Controls (revealed on hover/focus) */}
-              <div className="absolute top-3 right-3 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
-                <button
-                  type="button"
-                  onClick={() => openEditModal(service)}
-                  aria-label={`Edit ${service.title}`}
-                  title="Edit service"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-black/75 text-[#FAF6F0] backdrop-blur-sm transition-colors hover:border-[#F97316] hover:text-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(service.id)}
-                  aria-label={`Delete ${service.title}`}
-                  title="Delete service"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-black/75 text-[#FAF6F0] backdrop-blur-sm transition-colors hover:border-red-500/70 hover:bg-red-600/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              {/* Edit / Delete Controls (revealed on hover/focus for owner only) */}
+              {canEdit && (
+                <div className="absolute top-3 right-3 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(service)}
+                    aria-label={`Edit ${service.title}`}
+                    title="Edit service"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-black/75 text-[#FAF6F0] backdrop-blur-sm transition-colors hover:border-[#F97316] hover:text-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(service.id)}
+                    aria-label={`Delete ${service.title}`}
+                    title="Delete service"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-black/75 text-[#FAF6F0] backdrop-blur-sm transition-colors hover:border-red-500/70 hover:bg-red-600/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
 
               <button
                 type="button"
@@ -380,25 +394,27 @@ export const ExtraServicesSection: React.FC<ExtraServicesSectionProps> = ({
                   {inspectingService.workDetails}
                 </p>
 
-                <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(inspectingService.id)}
-                    className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 hover:text-red-200 whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span>Delete Service</span>
-                  </button>
+                {canEdit && (
+                  <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(inspectingService.id)}
+                      className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 hover:text-red-200 whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Delete Service</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(inspectingService)}
-                    className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#EA580C] px-4 text-xs font-semibold text-[#FFF7ED] transition-colors hover:bg-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    <span>Edit Service</span>
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(inspectingService)}
+                      className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#EA580C] px-4 text-xs font-semibold text-[#FFF7ED] transition-colors hover:bg-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      <span>Edit Service</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>,
@@ -406,7 +422,8 @@ export const ExtraServicesSection: React.FC<ExtraServicesSectionProps> = ({
         )}
 
       {/* Add / Edit Service Modal (Portaled to document.body) */}
-      {formOpen &&
+      {canEdit &&
+        formOpen &&
         typeof document !== 'undefined' &&
         createPortal(
           <div

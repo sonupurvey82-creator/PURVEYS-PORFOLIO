@@ -10,6 +10,8 @@ export interface GalleryImage {
   aspectRatio: number;
   createdAt: number;
   objectUrl: string;
+  mediaId?: string;
+  chunkCount?: number;
 }
 
 export interface StoredImageRecord {

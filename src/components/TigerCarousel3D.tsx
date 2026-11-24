@@ -3,6 +3,7 @@ import { Trash2, Upload } from 'lucide-react';
 import { GalleryVideo } from '../types/video';
 
 interface TigerCarousel3DProps {
+  canEdit: boolean;
   videos: GalleryVideo[];
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
@@ -50,6 +51,7 @@ function computeCardSize(
 }
 
 export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
+  canEdit,
   videos,
   activeIndex,
   onActiveIndexChange,
@@ -552,6 +554,7 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     if (e.dataTransfer.types.includes('Files')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
@@ -560,12 +563,14 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
   };
 
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOverFiles(false);
     }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     e.preventDefault();
     setIsDragOverFiles(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -580,9 +585,9 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
       role="region"
       aria-label="Showreels 3D Video Carousel"
       onKeyDown={handleKeyDown}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragOver={canEdit ? handleDragOver : undefined}
+      onDragLeave={canEdit ? handleDragLeave : undefined}
+      onDrop={canEdit ? handleDrop : undefined}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -595,21 +600,29 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
       {videos.length === 0 ? (
         <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 text-center">
           <div className="flex max-w-md flex-col items-center">
-            <h2 className="text-xl font-semibold tracking-tight text-[#FAF6F0] sm:text-2xl [text-wrap:balance]">
-              {isDragOverFiles ? 'Drop your videos here' : 'Add your showreel clips'}
-            </h2>
-            <p className="mt-2.5 text-sm leading-relaxed text-[#B6A99A] sm:text-base">
-              Upload videos from your gallery. Each frame adjusts to its exact ratio with drag-to-scroll 3D depth.
-            </p>
-            <button
-              type="button"
-              onClick={onTriggerFilePicker}
-              disabled={isProcessing}
-              className="mt-6 inline-flex items-center gap-2.5 rounded-lg bg-[#EA580C] px-5 py-2.5 text-sm font-medium text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0908] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Upload className="h-4 w-4" />
-              {isProcessing ? 'Loading videos...' : 'Upload from Gallery'}
-            </button>
+            {canEdit ? (
+              <>
+                <h2 className="text-xl font-semibold tracking-tight text-[#FAF6F0] sm:text-2xl [text-wrap:balance]">
+                  {isDragOverFiles ? 'Drop your videos here' : 'Add your showreel clips'}
+                </h2>
+                <p className="mt-2.5 text-sm leading-relaxed text-[#B6A99A] sm:text-base">
+                  Upload videos from your gallery. Each frame adjusts to its exact ratio with drag-to-scroll 3D depth.
+                </p>
+                <button
+                  type="button"
+                  onClick={onTriggerFilePicker}
+                  disabled={isProcessing}
+                  className="mt-6 inline-flex items-center gap-2.5 rounded-lg bg-[#EA580C] px-5 py-2.5 text-sm font-medium text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0908] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <Upload className="h-4 w-4" />
+                  {isProcessing ? 'Loading videos...' : 'Upload from Gallery'}
+                </button>
+              </>
+            ) : (
+              <p className="text-sm leading-relaxed text-[#B6A99A] sm:text-base">
+                Showreels coming soon.
+              </p>
+            )}
           </div>
         </div>
       ) : (
@@ -669,24 +682,26 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
                   className="pointer-events-none block h-full w-full object-contain bg-black"
                 />
 
-                <button
-                  type="button"
-                  data-delete-btn="true"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteVideo(video.id);
-                  }}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  aria-label={`Delete ${video.name}`}
-                  title="Delete showreel"
-                  className={`absolute top-3 right-3 z-20 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-all duration-150 hover:border-red-500/70 hover:bg-red-600/90 hover:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer ${
-                    isCenter
-                      ? 'opacity-85 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100'
-                      : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
-                  }`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    data-delete-btn="true"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteVideo(video.id);
+                    }}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    aria-label={`Delete ${video.name}`}
+                    title="Delete showreel"
+                    className={`absolute top-3 right-3 z-20 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-all duration-150 hover:border-red-500/70 hover:bg-red-600/90 hover:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer ${
+                      isCenter
+                        ? 'opacity-85 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100'
+                        : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                    }`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             );
           })}

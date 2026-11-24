@@ -1,0 +1,468 @@
+{
+  "entities": {
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized portfolio administrator identity record (private, never publicly readable).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the administrator.",
+          "maxLength": 128
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin"],
+          "description": "Administrative role."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        }
+      },
+      "required": ["uid", "role", "createdAt"]
+    },
+    "PortfolioVideo": {
+      "title": "PortfolioVideo",
+      "description": "Published showreel or reel/edit video metadata shown in 3D carousels.",
+      "type": "object",
+      "properties": {
+        "section": {
+          "type": "string",
+          "enum": ["showreels", "reels"],
+          "description": "Target 3D carousel section."
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "size": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "aspectRatio": {
+          "type": "number"
+        },
+        "ratioLabel": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "duration": {
+          "type": "number"
+        },
+        "order": {
+          "type": "number"
+        },
+        "mediaId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "chunkCount": {
+          "type": "number"
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "section",
+        "name",
+        "size",
+        "type",
+        "width",
+        "height",
+        "aspectRatio",
+        "ratioLabel",
+        "duration",
+        "order",
+        "mediaId",
+        "chunkCount",
+        "isPublic",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "EngineImage": {
+      "title": "EngineImage",
+      "description": "Published engine/tool artwork image and description for the 3D curved marquee.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "size": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "aspectRatio": {
+          "type": "number"
+        },
+        "mediaId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "chunkCount": {
+          "type": "number"
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "name",
+        "title",
+        "description",
+        "size",
+        "type",
+        "width",
+        "height",
+        "aspectRatio",
+        "mediaId",
+        "chunkCount",
+        "isPublic",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ExtraServiceItem": {
+      "title": "ExtraServiceItem",
+      "description": "Published extra service entry with optional image/video work sample.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "workDetails": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "mediaKind": {
+          "type": "string",
+          "enum": ["none", "image", "video"]
+        },
+        "mediaId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "mediaChunkCount": {
+          "type": "number"
+        },
+        "mediaMimeType": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "mediaAspectRatio": {
+          "type": "number"
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "title",
+        "workDetails",
+        "mediaKind",
+        "mediaId",
+        "mediaChunkCount",
+        "mediaMimeType",
+        "mediaAspectRatio",
+        "isPublic",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "YouTubeChannelItem": {
+      "title": "YouTubeChannelItem",
+      "description": "Published YouTube channel badge with name, destination URL, and optional logo.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "logoMediaId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "logoChunkCount": {
+          "type": "number"
+        },
+        "logoMimeType": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "name",
+        "url",
+        "logoMediaId",
+        "logoChunkCount",
+        "logoMimeType",
+        "isPublic",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PresetPack": {
+      "title": "PresetPack",
+      "description": "Published downloadable preset pack and optional preview artwork.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Premiere Pro",
+            "After Effects",
+            "DaVinci Resolve",
+            "Lightroom",
+            "Color LUT",
+            "Audio / SFX",
+            "Other"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "fileName": {
+          "type": "string",
+          "maxLength": 260
+        },
+        "fileSize": {
+          "type": "number"
+        },
+        "fileType": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "fileExt": {
+          "type": "string",
+          "maxLength": 16
+        },
+        "fileMediaId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fileChunkCount": {
+          "type": "number"
+        },
+        "previewKind": {
+          "type": "string",
+          "enum": ["none", "image", "video"]
+        },
+        "previewMediaId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "previewChunkCount": {
+          "type": "number"
+        },
+        "previewMimeType": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "downloads": {
+          "type": "number"
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "title",
+        "category",
+        "description",
+        "fileName",
+        "fileSize",
+        "fileType",
+        "fileExt",
+        "fileMediaId",
+        "fileChunkCount",
+        "previewKind",
+        "previewMediaId",
+        "previewChunkCount",
+        "previewMimeType",
+        "downloads",
+        "isPublic",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MediaChunk": {
+      "title": "MediaChunk",
+      "description": "Bounded base64 binary chunk (< 550KB) referenced by public showcase items.",
+      "type": "object",
+      "properties": {
+        "mediaId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "chunkIndex": {
+          "type": "number"
+        },
+        "data": {
+          "type": "string",
+          "maxLength": 550000
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "mediaId",
+        "chunkIndex",
+        "data",
+        "isPublic",
+        "ownerUid",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Private administrator identity records (no public reads or client writes)."
+    },
+    "/videos/{videoId}": {
+      "schema": { "$ref": "#/entities/PortfolioVideo" },
+      "description": "Publicly readable showcase videos (Showreels and My Reels and Edits); owner-only mutations."
+    },
+    "/engines/{engineId}": {
+      "schema": { "$ref": "#/entities/EngineImage" },
+      "description": "Publicly readable Engine Used by Me cards; owner-only mutations."
+    },
+    "/services/{serviceId}": {
+      "schema": { "$ref": "#/entities/ExtraServiceItem" },
+      "description": "Publicly readable Extra Services cards; owner-only mutations."
+    },
+    "/channels/{channelId}": {
+      "schema": { "$ref": "#/entities/YouTubeChannelItem" },
+      "description": "Publicly readable YouTube Channels links; owner-only mutations."
+    },
+    "/presets/{presetId}": {
+      "schema": { "$ref": "#/entities/PresetPack" },
+      "description": "Publicly readable downloadable Presets Library packs; owner-only mutations."
+    },
+    "/media_chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/MediaChunk" },
+      "description": "Publicly readable bounded base64 media chunks keyed deterministically as {mediaId}_{chunkIndex}; owner-only writes."
+    }
+  }
+}

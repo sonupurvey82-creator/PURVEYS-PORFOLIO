@@ -21,6 +21,7 @@ import { formatPresetSize, inferPresetCategory, PRESET_CATEGORIES } from '../uti
 import { isVideoFile } from '../utils/videoStorage';
 
 interface PresetsPageProps {
+  canEdit: boolean;
   presets: PresetItem[];
   isProcessing: boolean;
   onBackHome: () => void;
@@ -39,6 +40,7 @@ interface PresetsPageProps {
 }
 
 export const PresetsPage: React.FC<PresetsPageProps> = ({
+  canEdit,
   presets,
   isProcessing,
   onBackHome,
@@ -263,6 +265,7 @@ export const PresetsPage: React.FC<PresetsPageProps> = ({
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     if (e.dataTransfer.types.includes('Files')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
@@ -271,12 +274,14 @@ export const PresetsPage: React.FC<PresetsPageProps> = ({
   };
 
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOver(false);
     }
   };
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     e.preventDefault();
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -286,25 +291,27 @@ export const PresetsPage: React.FC<PresetsPageProps> = ({
 
   return (
     <div
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragOver={canEdit ? handleDragOver : undefined}
+      onDragLeave={canEdit ? handleDragLeave : undefined}
+      onDrop={canEdit ? handleDrop : undefined}
       className="mx-auto w-full max-w-[1440px] px-4 pt-6 pb-20 sm:px-6"
     >
-      {/* Hidden Multi-File Preset Picker */}
-      <input
-        ref={quickUploadInputRef}
-        type="file"
-        multiple
-        onChange={(e) => {
-          if (e.target.files && e.target.files.length > 0) {
-            onQuickUploadFiles(e.target.files);
-            e.target.value = '';
-          }
-        }}
-        className="sr-only"
-        aria-label="Upload multiple preset files"
-      />
+      {/* Hidden Multi-File Preset Picker (owner only) */}
+      {canEdit && (
+        <input
+          ref={quickUploadInputRef}
+          type="file"
+          multiple
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              onQuickUploadFiles(e.target.files);
+              e.target.value = '';
+            }
+          }}
+          className="sr-only"
+          aria-label="Upload multiple preset files"
+        />
+      )}
 
       {/* Top Navigation & Page Header */}
       <div className="mb-8 border-b border-white/10 pb-7">
@@ -323,41 +330,49 @@ export const PresetsPage: React.FC<PresetsPageProps> = ({
               Presets Library
             </h1>
             <p className="mt-2.5 text-sm leading-relaxed text-[#B6A99A] sm:text-base">
-              Upload LUTs, Premiere Pro presets, After Effects effects, Lightroom profiles, or project packs. Visitors can browse and download any preset directly.
+              {canEdit
+                ? 'Upload LUTs, Premiere Pro presets, After Effects effects, Lightroom profiles, or project packs. Visitors can browse and download any preset directly.'
+                : 'Browse LUTs, Premiere Pro presets, After Effects effects, Lightroom profiles, and project packs. Select any preset to inspect details and download directly.'}
             </p>
             {presets.length > 0 && (
               <p className="mt-3 flex flex-wrap items-center gap-x-2 text-xs text-[#A89A8A] tabular-nums">
                 <span>
                   {presets.length} {presets.length === 1 ? 'preset' : 'presets'} available
                 </span>
-                <span aria-hidden="true">·</span>
-                <span>
-                  {totalDownloads} {totalDownloads === 1 ? 'download' : 'downloads'}
-                </span>
+                {totalDownloads > 0 && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      {totalDownloads} {totalDownloads === 1 ? 'download' : 'downloads'}
+                    </span>
+                  </>
+                )}
               </p>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/90 px-4 text-xs font-semibold text-[#FDBA74] transition-colors hover:border-[#F97316] hover:bg-[#2A1B12] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Add with Details</span>
-            </button>
+          {canEdit && (
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/90 px-4 text-xs font-semibold text-[#FDBA74] transition-colors hover:border-[#F97316] hover:bg-[#2A1B12] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add with Details</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => quickUploadInputRef.current?.click()}
-              disabled={isProcessing}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#EA580C] px-4 text-xs font-semibold text-[#FFF7ED] transition-colors hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              <span>{isProcessing ? 'Uploading...' : 'Upload Preset Files'}</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => quickUploadInputRef.current?.click()}
+                disabled={isProcessing}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#EA580C] px-4 text-xs font-semibold text-[#FFF7ED] transition-colors hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                <span>{isProcessing ? 'Uploading...' : 'Upload Preset Files'}</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -417,8 +432,8 @@ export const PresetsPage: React.FC<PresetsPageProps> = ({
         </div>
       )}
 
-      {/* Drag & Drop Target Banner when dragging files */}
-      {isDragOver && (
+      {/* Drag & Drop Target Banner when dragging files (owner only) */}
+      {canEdit && isDragOver && (
         <div className="mb-6 flex items-center justify-center rounded-2xl border-2 border-dashed border-[#F97316] bg-[#1B130E]/90 px-6 py-8 text-center">
           <p className="text-sm font-medium text-[#FED7AA]">
             Drop your preset files anywhere here to add them to the library
@@ -432,31 +447,44 @@ export const PresetsPage: React.FC<PresetsPageProps> = ({
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#F97316]/30 bg-[#1B130E]/90 text-[#F97316]">
             <Sliders className="h-6 w-6" aria-hidden="true" />
           </div>
-          <h2 className="font-display text-xl font-semibold tracking-tight text-[#FAF6F0] sm:text-2xl">
-            Upload your presets here
-          </h2>
-          <p className="mt-2 max-w-md text-sm leading-relaxed text-[#B6A99A]">
-            Drag and drop `.cube`, `.prfpset`, `.ffx`, `.xmp`, `.mogrt`, `.zip`, or any preset files. Once uploaded, anyone visiting this page can download them.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => quickUploadInputRef.current?.click()}
-              disabled={isProcessing}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#EA580C] px-5 text-xs font-semibold text-[#FFF7ED] transition-colors hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Upload className="h-4 w-4" />
-              <span>{isProcessing ? 'Uploading...' : 'Upload Preset Files'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/15 bg-[#1B130E]/85 px-4 text-xs font-medium text-[#E4DCD2] transition-colors hover:border-[#F97316] hover:text-[#FDBA74] whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Add with Preview & Notes</span>
-            </button>
-          </div>
+          {canEdit ? (
+            <>
+              <h2 className="font-display text-xl font-semibold tracking-tight text-[#FAF6F0] sm:text-2xl">
+                Upload your presets here
+              </h2>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-[#B6A99A]">
+                Drag and drop `.cube`, `.prfpset`, `.ffx`, `.xmp`, `.mogrt`, `.zip`, or any preset files. Once uploaded, anyone visiting this page can download them.
+              </p>
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => quickUploadInputRef.current?.click()}
+                  disabled={isProcessing}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#EA580C] px-5 text-xs font-semibold text-[#FFF7ED] transition-colors hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <Upload className="h-4 w-4" />
+                  <span>{isProcessing ? 'Uploading...' : 'Upload Preset Files'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openAddModal}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/15 bg-[#1B130E]/85 px-4 text-xs font-medium text-[#E4DCD2] transition-colors hover:border-[#F97316] hover:text-[#FDBA74] whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Add with Preview & Notes</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="font-display text-xl font-semibold tracking-tight text-[#FAF6F0] sm:text-2xl">
+                Presets Coming Soon
+              </h2>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-[#B6A99A]">
+                No preset packs have been published yet. Check back soon to download LUTs and editing presets.
+              </p>
+            </>
+          )}
         </div>
       ) : filteredPresets.length === 0 ? (
         <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-white/10 bg-[#07150C]/70 px-6 py-10 text-center">
@@ -522,27 +550,29 @@ export const PresetsPage: React.FC<PresetsPageProps> = ({
                     )}
                   </button>
 
-                  {/* Edit / Delete Controls */}
-                  <div className="absolute top-3 right-3 z-10 flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(preset)}
-                      aria-label={`Edit ${preset.title}`}
-                      title="Edit preset"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-colors hover:border-[#F97316] hover:text-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDeletePreset(preset.id)}
-                      aria-label={`Delete ${preset.title}`}
-                      title="Delete preset"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-colors hover:border-red-500/70 hover:bg-red-600/85 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  {/* Edit / Delete Controls (owner only) */}
+                  {canEdit && (
+                    <div className="absolute top-3 right-3 z-10 flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(preset)}
+                        aria-label={`Edit ${preset.title}`}
+                        title="Edit preset"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-colors hover:border-[#F97316] hover:text-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeletePreset(preset.id)}
+                        aria-label={`Delete ${preset.title}`}
+                        title="Delete preset"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-colors hover:border-red-500/70 hover:bg-red-600/85 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Preset Metadata & Download Action */}
@@ -680,25 +710,31 @@ export const PresetsPage: React.FC<PresetsPageProps> = ({
                   </p>
                 )}
 
-                <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onDeletePreset(inspectingPreset.id)}
-                      className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 hover:text-red-200 whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      <span>Delete</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(inspectingPreset)}
-                      className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-white/15 bg-[#1B1410] px-3.5 text-xs font-medium text-[#E4DCD2] transition-colors hover:border-[#F97316] hover:text-[#FDBA74] whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      <span>Edit</span>
-                    </button>
-                  </div>
+                <div
+                  className={`mt-7 flex flex-wrap items-center gap-3 border-t border-white/10 pt-4 ${
+                    canEdit ? 'justify-between' : 'justify-end'
+                  }`}
+                >
+                  {canEdit && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onDeletePreset(inspectingPreset.id)}
+                        className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 hover:text-red-200 whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>Delete</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(inspectingPreset)}
+                        className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-white/15 bg-[#1B1410] px-3.5 text-xs font-medium text-[#E4DCD2] transition-colors hover:border-[#F97316] hover:text-[#FDBA74] whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span>Edit</span>
+                      </button>
+                    </div>
+                  )}
 
                   <button
                     type="button"
@@ -715,8 +751,9 @@ export const PresetsPage: React.FC<PresetsPageProps> = ({
           document.body
         )}
 
-      {/* Add / Edit Preset Modal */}
-      {formOpen &&
+      {/* Add / Edit Preset Modal (owner only) */}
+      {canEdit &&
+        formOpen &&
         typeof document !== 'undefined' &&
         createPortal(
           <div

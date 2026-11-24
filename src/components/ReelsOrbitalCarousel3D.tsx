@@ -3,6 +3,7 @@ import { Trash2, Upload } from 'lucide-react';
 import { GalleryVideo } from '../types/video';
 
 interface ReelsOrbitalCarousel3DProps {
+  canEdit: boolean;
   videos: GalleryVideo[];
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
@@ -50,6 +51,7 @@ function computeCardSize(
 }
 
 export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
+  canEdit,
   videos,
   activeIndex,
   onActiveIndexChange,
@@ -548,6 +550,7 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     if (e.dataTransfer.types.includes('Files')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
@@ -556,12 +559,14 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
   };
 
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOverFiles(false);
     }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     e.preventDefault();
     setIsDragOverFiles(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -576,9 +581,9 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
       role="region"
       aria-label="My Reels and Edits 3D Orbital Carousel"
       onKeyDown={handleKeyDown}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragOver={canEdit ? handleDragOver : undefined}
+      onDragLeave={canEdit ? handleDragLeave : undefined}
+      onDrop={canEdit ? handleDrop : undefined}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -590,20 +595,28 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
     >
       {videos.length === 0 ? (
         <div className="relative z-10 flex h-full w-full flex-col items-start justify-center px-1 text-left">
-          <p className="max-w-sm text-sm leading-relaxed text-[#B6A99A]">
-            {isDragOverFiles
-              ? 'Drop your reels or edits here.'
-              : 'Upload your vertical reels or short edits here. Frames auto-size to every video ratio.'}
-          </p>
-          <button
-            type="button"
-            onClick={onTriggerFilePicker}
-            disabled={isProcessing}
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#EA580C] px-4 py-2.5 text-xs font-semibold text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0908] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Upload className="h-4 w-4" />
-            {isProcessing ? 'Loading...' : 'Upload Reels'}
-          </button>
+          {canEdit ? (
+            <>
+              <p className="max-w-sm text-sm leading-relaxed text-[#B6A99A]">
+                {isDragOverFiles
+                  ? 'Drop your reels or edits here.'
+                  : 'Upload your vertical reels or short edits here. Frames auto-size to every video ratio.'}
+              </p>
+              <button
+                type="button"
+                onClick={onTriggerFilePicker}
+                disabled={isProcessing}
+                className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#EA580C] px-4 py-2.5 text-xs font-semibold text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0908] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Upload className="h-4 w-4" />
+                {isProcessing ? 'Loading...' : 'Upload Reels'}
+              </button>
+            </>
+          ) : (
+            <p className="max-w-sm text-sm leading-relaxed text-[#B6A99A]">
+              Reels and edits coming soon.
+            </p>
+          )}
         </div>
       ) : (
         <div
@@ -662,24 +675,26 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
                   className="pointer-events-none block h-full w-full object-contain bg-black"
                 />
 
-                <button
-                  type="button"
-                  data-delete-btn="true"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteVideo(video.id);
-                  }}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  aria-label={`Delete ${video.name}`}
-                  title="Delete reel or edit"
-                  className={`absolute top-2.5 right-2.5 z-20 inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-all duration-150 hover:border-red-500/70 hover:bg-red-600/90 hover:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer ${
-                    isCenter
-                      ? 'opacity-85 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100'
-                      : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
-                  }`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    data-delete-btn="true"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteVideo(video.id);
+                    }}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    aria-label={`Delete ${video.name}`}
+                    title="Delete reel or edit"
+                    className={`absolute top-2.5 right-2.5 z-20 inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-all duration-150 hover:border-red-500/70 hover:bg-red-600/90 hover:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer ${
+                      isCenter
+                        ? 'opacity-85 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100'
+                        : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                    }`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             );
           })}

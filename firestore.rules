@@ -1,0 +1,351 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // GLOBAL HARDENED HELPERS
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'justdivebyflare@gmail.com' &&
+         request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidTimestampOnCreate(data) {
+      return data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    function isValidUpdatedTimestamp(data) {
+      return data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function isImmutableOwnershipAndCreated(data, old) {
+      return data.ownerUid == old.ownerUid &&
+             data.createdAt == old.createdAt;
+    }
+
+    // =========================================================================
+    // ENTITY VALIDATION BLUEPRINTS
+    // =========================================================================
+
+    function isValidVideo(data) {
+      return data.keys().hasAll([
+               'section', 'name', 'size', 'type', 'width', 'height',
+               'aspectRatio', 'ratioLabel', 'duration', 'order',
+               'mediaId', 'chunkCount', 'isPublic', 'ownerUid',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'section', 'name', 'size', 'type', 'width', 'height',
+               'aspectRatio', 'ratioLabel', 'duration', 'order',
+               'mediaId', 'chunkCount', 'isPublic', 'ownerUid',
+               'createdAt', 'updatedAt'
+             ]) &&
+             (data.section == 'showreels' || data.section == 'reels') &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
+             (data.size is int || data.size is float) && data.size >= 0 && data.size <= 104857600 &&
+             data.type is string && data.type.size() >= 1 && data.type.size() <= 100 &&
+             (data.width is int || data.width is float) && data.width > 0 && data.width <= 16384 &&
+             (data.height is int || data.height is float) && data.height > 0 && data.height <= 16384 &&
+             (data.aspectRatio is int || data.aspectRatio is float) && data.aspectRatio > 0 && data.aspectRatio <= 50 &&
+             data.ratioLabel is string && data.ratioLabel.size() >= 1 && data.ratioLabel.size() <= 24 &&
+             (data.duration is int || data.duration is float) && data.duration >= 0 && data.duration <= 86400 &&
+             (data.order is int || data.order is float) && data.order >= 0 && data.order <= 1000000 &&
+             isValidId(data.mediaId) &&
+             data.chunkCount is int && data.chunkCount >= 1 && data.chunkCount <= 125 &&
+             data.isPublic is bool && data.isPublic == true &&
+             data.ownerUid is string && data.ownerUid.size() <= 128 &&
+             isValidUpdatedTimestamp(data);
+    }
+
+    function isValidEngine(data) {
+      return data.keys().hasAll([
+               'name', 'title', 'description', 'size', 'type', 'width', 'height',
+               'aspectRatio', 'mediaId', 'chunkCount', 'isPublic', 'ownerUid',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'name', 'title', 'description', 'size', 'type', 'width', 'height',
+               'aspectRatio', 'mediaId', 'chunkCount', 'isPublic', 'ownerUid',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 4000 &&
+             (data.size is int || data.size is float) && data.size >= 0 && data.size <= 52428800 &&
+             data.type is string && data.type.size() >= 1 && data.type.size() <= 100 &&
+             (data.width is int || data.width is float) && data.width > 0 && data.width <= 16384 &&
+             (data.height is int || data.height is float) && data.height > 0 && data.height <= 16384 &&
+             (data.aspectRatio is int || data.aspectRatio is float) && data.aspectRatio > 0 && data.aspectRatio <= 50 &&
+             isValidId(data.mediaId) &&
+             data.chunkCount is int && data.chunkCount >= 1 && data.chunkCount <= 125 &&
+             data.isPublic is bool && data.isPublic == true &&
+             data.ownerUid is string && data.ownerUid.size() <= 128 &&
+             isValidUpdatedTimestamp(data);
+    }
+
+    function isValidService(data) {
+      return data.keys().hasAll([
+               'title', 'workDetails', 'mediaKind', 'mediaId', 'mediaChunkCount',
+               'mediaMimeType', 'mediaAspectRatio', 'isPublic', 'ownerUid',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'title', 'workDetails', 'mediaKind', 'mediaId', 'mediaChunkCount',
+               'mediaMimeType', 'mediaAspectRatio', 'isPublic', 'ownerUid',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.workDetails is string && data.workDetails.size() >= 1 && data.workDetails.size() <= 4000 &&
+             (data.mediaKind == 'none' || data.mediaKind == 'image' || data.mediaKind == 'video') &&
+             data.mediaId is string && data.mediaId.size() <= 128 &&
+             (data.mediaId == '' || isValidId(data.mediaId)) &&
+             data.mediaChunkCount is int && data.mediaChunkCount >= 0 && data.mediaChunkCount <= 125 &&
+             data.mediaMimeType is string && data.mediaMimeType.size() <= 100 &&
+             (data.mediaAspectRatio is int || data.mediaAspectRatio is float) && data.mediaAspectRatio >= 0 && data.mediaAspectRatio <= 50 &&
+             data.isPublic is bool && data.isPublic == true &&
+             data.ownerUid is string && data.ownerUid.size() <= 128 &&
+             isValidUpdatedTimestamp(data);
+    }
+
+    function isValidChannel(data) {
+      return data.keys().hasAll([
+               'name', 'url', 'logoMediaId', 'logoChunkCount', 'logoMimeType',
+               'isPublic', 'ownerUid', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'name', 'url', 'logoMediaId', 'logoChunkCount', 'logoMimeType',
+               'isPublic', 'ownerUid', 'createdAt', 'updatedAt'
+             ]) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
+             data.url is string && data.url.size() >= 8 && data.url.size() <= 500 &&
+             data.url.matches('^https?://.+') &&
+             data.logoMediaId is string && data.logoMediaId.size() <= 128 &&
+             (data.logoMediaId == '' || isValidId(data.logoMediaId)) &&
+             data.logoChunkCount is int && data.logoChunkCount >= 0 && data.logoChunkCount <= 50 &&
+             data.logoMimeType is string && data.logoMimeType.size() <= 100 &&
+             data.isPublic is bool && data.isPublic == true &&
+             data.ownerUid is string && data.ownerUid.size() <= 128 &&
+             isValidUpdatedTimestamp(data);
+    }
+
+    function isValidPreset(data) {
+      return data.keys().hasAll([
+               'title', 'category', 'description', 'fileName', 'fileSize',
+               'fileType', 'fileExt', 'fileMediaId', 'fileChunkCount',
+               'previewKind', 'previewMediaId', 'previewChunkCount', 'previewMimeType',
+               'downloads', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'title', 'category', 'description', 'fileName', 'fileSize',
+               'fileType', 'fileExt', 'fileMediaId', 'fileChunkCount',
+               'previewKind', 'previewMediaId', 'previewChunkCount', 'previewMimeType',
+               'downloads', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'
+             ]) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             (data.category == 'Premiere Pro' ||
+              data.category == 'After Effects' ||
+              data.category == 'DaVinci Resolve' ||
+              data.category == 'Lightroom' ||
+              data.category == 'Color LUT' ||
+              data.category == 'Audio / SFX' ||
+              data.category == 'Other') &&
+             data.description is string && data.description.size() <= 4000 &&
+             data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 260 &&
+             (data.fileSize is int || data.fileSize is float) && data.fileSize >= 0 && data.fileSize <= 104857600 &&
+             data.fileType is string && data.fileType.size() >= 1 && data.fileType.size() <= 120 &&
+             data.fileExt is string && data.fileExt.size() >= 1 && data.fileExt.size() <= 16 &&
+             isValidId(data.fileMediaId) &&
+             data.fileChunkCount is int && data.fileChunkCount >= 1 && data.fileChunkCount <= 125 &&
+             (data.previewKind == 'none' || data.previewKind == 'image' || data.previewKind == 'video') &&
+             data.previewMediaId is string && data.previewMediaId.size() <= 128 &&
+             (data.previewMediaId == '' || isValidId(data.previewMediaId)) &&
+             data.previewChunkCount is int && data.previewChunkCount >= 0 && data.previewChunkCount <= 125 &&
+             data.previewMimeType is string && data.previewMimeType.size() <= 100 &&
+             data.downloads is int && data.downloads >= 0 && data.downloads <= 100000000 &&
+             data.isPublic is bool && data.isPublic == true &&
+             data.ownerUid is string && data.ownerUid.size() <= 128 &&
+             isValidUpdatedTimestamp(data);
+    }
+
+    function isValidMediaChunk(data) {
+      return data.keys().hasAll([
+               'mediaId', 'chunkIndex', 'data', 'isPublic', 'ownerUid', 'createdAt'
+             ]) &&
+             data.keys().hasOnly([
+               'mediaId', 'chunkIndex', 'data', 'isPublic', 'ownerUid', 'createdAt'
+             ]) &&
+             isValidId(data.mediaId) &&
+             data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex <= 125 &&
+             data.data is string && data.data.size() >= 1 && data.data.size() <= 750000 &&
+             data.isPublic is bool && data.isPublic == true &&
+             data.ownerUid is string && data.ownerUid.size() <= 128 &&
+             isValidTimestampOnCreate(data);
+    }
+
+    // =========================================================================
+    // COLLECTION MATCH BLOCKS
+    // =========================================================================
+
+    // Private Admin identity records
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && (request.auth.uid == adminId || isAdmin());
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
+    // Boot-time Firestore connectivity check document
+    match /test/{docId} {
+      allow get: if docId == 'connection';
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
+    // Showcase Videos (Showreels + My Reels and Edits)
+    match /videos/{videoId} {
+      allow get: if isValidId(videoId) && existing().isPublic == true;
+      allow list: if existing().isPublic == true;
+      allow create: if isSignedIn() &&
+        isValidId(videoId) &&
+        isValidVideo(incoming()) &&
+        incoming().ownerUid == request.auth.uid &&
+        isValidTimestampOnCreate(incoming()) &&
+        isAdmin();
+      allow update: if isSignedIn() &&
+        isValidId(videoId) &&
+        isValidVideo(incoming()) &&
+        isImmutableOwnershipAndCreated(incoming(), existing()) &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'section', 'name', 'order', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(videoId) && isAdmin();
+    }
+
+    // Engine Used by Me Images
+    match /engines/{engineId} {
+      allow get: if isValidId(engineId) && existing().isPublic == true;
+      allow list: if existing().isPublic == true;
+      allow create: if isSignedIn() &&
+        isValidId(engineId) &&
+        isValidEngine(incoming()) &&
+        incoming().ownerUid == request.auth.uid &&
+        isValidTimestampOnCreate(incoming()) &&
+        isAdmin();
+      allow update: if isSignedIn() &&
+        isValidId(engineId) &&
+        isValidEngine(incoming()) &&
+        isImmutableOwnershipAndCreated(incoming(), existing()) &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'description', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(engineId) && isAdmin();
+    }
+
+    // Extra Services
+    match /services/{serviceId} {
+      allow get: if isValidId(serviceId) && existing().isPublic == true;
+      allow list: if existing().isPublic == true;
+      allow create: if isSignedIn() &&
+        isValidId(serviceId) &&
+        isValidService(incoming()) &&
+        incoming().ownerUid == request.auth.uid &&
+        isValidTimestampOnCreate(incoming()) &&
+        isAdmin();
+      allow update: if isSignedIn() &&
+        isValidId(serviceId) &&
+        isValidService(incoming()) &&
+        isImmutableOwnershipAndCreated(incoming(), existing()) &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'workDetails', 'mediaKind', 'mediaId',
+          'mediaChunkCount', 'mediaMimeType', 'mediaAspectRatio', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(serviceId) && isAdmin();
+    }
+
+    // YouTube Channels
+    match /channels/{channelId} {
+      allow get: if isValidId(channelId) && existing().isPublic == true;
+      allow list: if existing().isPublic == true;
+      allow create: if isSignedIn() &&
+        isValidId(channelId) &&
+        isValidChannel(incoming()) &&
+        incoming().ownerUid == request.auth.uid &&
+        isValidTimestampOnCreate(incoming()) &&
+        isAdmin();
+      allow update: if isSignedIn() &&
+        isValidId(channelId) &&
+        isValidChannel(incoming()) &&
+        isImmutableOwnershipAndCreated(incoming(), existing()) &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'url', 'logoMediaId', 'logoChunkCount', 'logoMimeType', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(channelId) && isAdmin();
+    }
+
+    // Presets Library
+    match /presets/{presetId} {
+      allow get: if isValidId(presetId) && existing().isPublic == true;
+      allow list: if existing().isPublic == true;
+      allow create: if isSignedIn() &&
+        isValidId(presetId) &&
+        isValidPreset(incoming()) &&
+        incoming().ownerUid == request.auth.uid &&
+        isValidTimestampOnCreate(incoming()) &&
+        isAdmin();
+      allow update: if isSignedIn() &&
+        isValidId(presetId) &&
+        isValidPreset(incoming()) &&
+        isImmutableOwnershipAndCreated(incoming(), existing()) &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'category', 'description',
+          'fileName', 'fileSize', 'fileType', 'fileExt', 'fileMediaId', 'fileChunkCount',
+          'previewKind', 'previewMediaId', 'previewChunkCount', 'previewMimeType',
+          'downloads', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(presetId) && isAdmin();
+    }
+
+    // Bounded Base64 Media Chunks (deterministic get by ID only, no list scraping)
+    match /media_chunks/{chunkId} {
+      allow get: if isValidId(chunkId) && existing().isPublic == true;
+      allow list: if false;
+      allow create: if isSignedIn() &&
+        isValidId(chunkId) &&
+        isValidMediaChunk(incoming()) &&
+        incoming().ownerUid == request.auth.uid &&
+        isAdmin();
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(chunkId) && isAdmin();
+    }
+  }
+}

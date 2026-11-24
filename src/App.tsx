@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { CloudUpload, Lock, LogOut, Plus } from 'lucide-react';
 import { ContactSection } from './components/ContactSection';
 import { ExperienceShowcase } from './components/ExperienceShowcase';
 import { ExtraServicesSection } from './components/ExtraServicesSection';
@@ -16,56 +17,70 @@ import { TigerCarousel3D } from './components/TigerCarousel3D';
 import { VideoLightbox } from './components/VideoLightbox';
 import { WelcomeAirshipBanner } from './components/WelcomeAirshipBanner';
 import { YouTubeChannelsSection } from './components/YouTubeChannelsSection';
-import { StoredChannelRecord, YouTubeChannel } from './types/channel';
-import { GalleryImage, StoredImageRecord } from './types/image';
-import { PresetCategory, PresetItem, PresetPreviewKind, StoredPresetRecord } from './types/preset';
-import { ExtraService, ServiceWorkMediaKind, StoredServiceRecord } from './types/service';
-import { GalleryVideo, StoredVideoRecord, VideoSection } from './types/video';
 import {
-  deleteYouTubeChannelRecord,
+  auth,
+  isOwnerUser,
+  OWNER_ADMIN_EMAIL,
+  signInWithOwnerGoogle,
+  signOutOwner,
+} from './firebase';
+import { YouTubeChannel } from './types/channel';
+import { GalleryImage } from './types/image';
+import { PresetCategory, PresetItem, PresetPreviewKind } from './types/preset';
+import { ExtraService, ServiceWorkMediaKind } from './types/service';
+import { GalleryVideo, VideoSection } from './types/video';
+import {
   getYouTubeChannelRecord,
   loadYouTubeChannels,
-  saveYouTubeChannelRecord,
 } from './utils/channelStorage';
+import { extractImageMetadata, isImageFile, loadGalleryImages } from './utils/imageStorage';
 import {
-  deletePresetRecord,
+  createCloudEngine,
+  createCloudVideo,
+  deleteCloudChannel,
+  deleteCloudEngine,
+  deleteCloudPreset,
+  deleteCloudService,
+  deleteCloudVideo,
+  saveCloudChannel,
+  saveCloudPreset,
+  saveCloudService,
+  subscribeCloudChannels,
+  subscribeCloudEngines,
+  subscribeCloudPresets,
+  subscribeCloudServices,
+  subscribeCloudVideos,
+  updateCloudEngineInfo,
+} from './utils/portfolioCloudSync';
+import {
   extractFileExtension,
   getPresetRecord,
-  incrementPresetDownload,
   inferPresetCategory,
   loadPresets,
-  savePresetRecord,
 } from './utils/presetStorage';
+import { getExtraServiceRecord, loadExtraServices } from './utils/serviceStorage';
 import {
-  deleteExtraServiceRecord,
-  getExtraServiceRecord,
-  loadExtraServices,
-  saveExtraServiceRecord,
-} from './utils/serviceStorage';
-import {
-  deleteImageRecord,
-  extractImageMetadata,
-  isImageFile,
-  loadGalleryImages,
-  saveImageRecord,
-  updateImageRecordInfo,
-} from './utils/imageStorage';
-import {
-  deleteVideoRecord,
   extractVideoMetadata,
   isVideoFile,
   loadGalleryVideos,
-  saveVideoRecord,
 } from './utils/videoStorage';
 
 export default function App() {
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const canEdit = useMemo(() => isOwnerUser(currentUser), [currentUser]);
+
   const [videos, setVideos] = useState<GalleryVideo[]>([]);
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [channels, setChannels] = useState<YouTubeChannel[]>([]);
   const [services, setServices] = useState<ExtraService[]>([]);
   const [presets, setPresets] = useState<PresetItem[]>([]);
+
   const [processingPresets, setProcessingPresets] = useState<boolean>(false);
   const [processingImages, setProcessingImages] = useState<boolean>(false);
+  const [isSyncingLocal, setIsSyncingLocal] = useState<boolean>(false);
+  const [localDraftCount, setLocalDraftCount] = useState<number>(0);
+
   const [currentPage, setCurrentPage] = useState<'home' | 'presets'>(() =>
     typeof window !== 'undefined' && window.location.hash === '#presets' ? 'presets' : 'home'
   );
@@ -95,6 +110,7 @@ export default function App() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const showreelSectionRef = useRef<HTMLElement>(null);
   const reelsSectionRef = useRef<HTMLElement>(null);
+
   const videosRef = useRef<GalleryVideo[]>([]);
   videosRef.current = videos;
   const imagesRef = useRef<GalleryImage[]>([]);
@@ -105,6 +121,14 @@ export default function App() {
   servicesRef.current = services;
   const presetsRef = useRef<PresetItem[]>([]);
   presetsRef.current = presets;
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const onHashChange = () => {
@@ -165,7 +189,6 @@ export default function App() {
           }
         }
 
-        // Automatically route audio to the visible section when scrolling between stages
         if (ratios.showreels < 0.15 && ratios.reels >= 0.15) {
           setAudioSection('reels');
         } else if (ratios.reels < 0.15 && ratios.showreels >= 0.15) {
@@ -180,54 +203,236 @@ export default function App() {
     return () => observer.disconnect();
   }, [currentPage]);
 
+  // Subscribe to shared Firestore showcase collections once Firebase Auth finishes initializing
   useEffect(() => {
-    let mounted = true;
+    if (!authReady) return;
+
+    const loadedFlags = {
+      videos: false,
+      engines: false,
+      services: false,
+      channels: false,
+      presets: false,
+    };
+
+    const markLoaded = (key: keyof typeof loadedFlags) => {
+      loadedFlags[key] = true;
+      if (
+        loadedFlags.videos &&
+        loadedFlags.engines &&
+        loadedFlags.services &&
+        loadedFlags.channels &&
+        loadedFlags.presets
+      ) {
+        setIsHydrated(true);
+      }
+    };
+
+    const unsubVideos = subscribeCloudVideos(
+      (items) => {
+        setVideos(items);
+        markLoaded('videos');
+      },
+      (msg) => setNotice(msg)
+    );
+
+    const unsubEngines = subscribeCloudEngines(
+      (items) => {
+        setImages(items);
+        markLoaded('engines');
+      },
+      (msg) => setNotice(msg)
+    );
+
+    const unsubServices = subscribeCloudServices(
+      (items) => {
+        setServices(items);
+        markLoaded('services');
+      },
+      (msg) => setNotice(msg)
+    );
+
+    const unsubChannels = subscribeCloudChannels(
+      (items) => {
+        setChannels(items);
+        markLoaded('channels');
+      },
+      (msg) => setNotice(msg)
+    );
+
+    const unsubPresets = subscribeCloudPresets(
+      (items) => {
+        setPresets(items);
+        markLoaded('presets');
+      },
+      (msg) => setNotice(msg)
+    );
+
+    const safetyTimeout = window.setTimeout(() => {
+      setIsHydrated(true);
+    }, 3500);
+
+    return () => {
+      window.clearTimeout(safetyTimeout);
+      unsubVideos();
+      unsubEngines();
+      unsubServices();
+      unsubChannels();
+      unsubPresets();
+    };
+  }, [authReady]);
+
+  // Check if owner has any legacy browser-local IndexedDB drafts not yet in Firestore
+  useEffect(() => {
+    if (!canEdit || !isHydrated) {
+      setLocalDraftCount(0);
+      return;
+    }
+
+    let cancelled = false;
     Promise.all([
       loadGalleryVideos(),
       loadGalleryImages(),
-      loadYouTubeChannels(),
       loadExtraServices(),
+      loadYouTubeChannels(),
       loadPresets(),
-    ]).then(([loadedVideos, loadedImages, loadedChannels, loadedServices, loadedPresets]) => {
-      if (!mounted) {
-        loadedVideos.forEach((v) => URL.revokeObjectURL(v.objectUrl));
-        loadedImages.forEach((img) => URL.revokeObjectURL(img.objectUrl));
-        loadedChannels.forEach((ch) => {
-          if (ch.logoObjectUrl) URL.revokeObjectURL(ch.logoObjectUrl);
+    ]).then(([localVids, localImgs, localSrvs, localChs, localPsts]) => {
+      if (cancelled) return;
+
+      const cloudVidIds = new Set(videos.map((v) => v.id));
+      const cloudImgIds = new Set(images.map((i) => i.id));
+      const cloudSrvIds = new Set(services.map((s) => s.id));
+      const cloudChIds = new Set(channels.map((c) => c.id));
+      const cloudPstIds = new Set(presets.map((p) => p.id));
+
+      const count =
+        localVids.filter((v) => !cloudVidIds.has(v.id)).length +
+        localImgs.filter((i) => !cloudImgIds.has(i.id)).length +
+        localSrvs.filter((s) => !cloudSrvIds.has(s.id)).length +
+        localChs.filter((c) => !cloudChIds.has(c.id)).length +
+        localPsts.filter((p) => !cloudPstIds.has(p.id)).length;
+
+      setLocalDraftCount(count);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canEdit, isHydrated, videos, images, services, channels, presets]);
+
+  const handleSyncLocalDrafts = useCallback(async () => {
+    if (!canEdit || !currentUser || isSyncingLocal) return;
+    setIsSyncingLocal(true);
+    setNotice(null);
+
+    try {
+      const [localVids, localImgs, localSrvs, localChs, localPsts] = await Promise.all([
+        loadGalleryVideos(),
+        loadGalleryImages(),
+        loadExtraServices(),
+        loadYouTubeChannels(),
+        loadPresets(),
+      ]);
+
+      const cloudVidIds = new Set(videosRef.current.map((v) => v.id));
+      const cloudImgIds = new Set(imagesRef.current.map((i) => i.id));
+      const cloudSrvIds = new Set(servicesRef.current.map((s) => s.id));
+      const cloudChIds = new Set(channelsRef.current.map((c) => c.id));
+      const cloudPstIds = new Set(presetsRef.current.map((p) => p.id));
+
+      for (const vid of localVids) {
+        if (cloudVidIds.has(vid.id)) continue;
+        const blob = await fetch(vid.objectUrl).then((r) => r.blob());
+        await createCloudVideo({
+          id: vid.id,
+          section: vid.section,
+          name: vid.name,
+          size: vid.size,
+          type: vid.type,
+          width: vid.width,
+          height: vid.height,
+          aspectRatio: vid.aspectRatio,
+          ratioLabel: vid.ratioLabel,
+          duration: vid.duration,
+          order: vid.order,
+          blob,
+          ownerUid: currentUser.uid,
         });
-        loadedServices.forEach((srv) => {
-          if (srv.mediaObjectUrl) URL.revokeObjectURL(srv.mediaObjectUrl);
-        });
-        loadedPresets.forEach((preset) => {
-          URL.revokeObjectURL(preset.fileObjectUrl);
-          if (preset.previewObjectUrl) URL.revokeObjectURL(preset.previewObjectUrl);
-        });
-        return;
       }
 
-      setVideos(loadedVideos);
-      setImages(loadedImages);
-      setChannels(loadedChannels);
-      setServices(loadedServices);
-      setPresets(loadedPresets);
-      setIsHydrated(true);
-    });
-    return () => {
-      mounted = false;
-      videosRef.current.forEach((v) => URL.revokeObjectURL(v.objectUrl));
-      imagesRef.current.forEach((img) => URL.revokeObjectURL(img.objectUrl));
-      channelsRef.current.forEach((ch) => {
-        if (ch.logoObjectUrl) URL.revokeObjectURL(ch.logoObjectUrl);
-      });
-      servicesRef.current.forEach((srv) => {
-        if (srv.mediaObjectUrl) URL.revokeObjectURL(srv.mediaObjectUrl);
-      });
-      presetsRef.current.forEach((preset) => {
-        URL.revokeObjectURL(preset.fileObjectUrl);
-        if (preset.previewObjectUrl) URL.revokeObjectURL(preset.previewObjectUrl);
-      });
-    };
-  }, []);
+      for (const img of localImgs) {
+        if (cloudImgIds.has(img.id)) continue;
+        const blob = await fetch(img.objectUrl).then((r) => r.blob());
+        await createCloudEngine({
+          id: img.id,
+          name: img.name,
+          title: img.title,
+          description: img.description,
+          size: img.size,
+          type: img.type,
+          width: img.width,
+          height: img.height,
+          aspectRatio: img.aspectRatio,
+          blob,
+          ownerUid: currentUser.uid,
+        });
+      }
+
+      for (const srv of localSrvs) {
+        if (cloudSrvIds.has(srv.id)) continue;
+        const rec = await getExtraServiceRecord(srv.id);
+        await saveCloudService({
+          id: srv.id,
+          title: srv.title,
+          workDetails: srv.workDetails,
+          mediaKind: rec?.mediaKind,
+          mediaBlob: rec?.mediaBlob,
+          mediaAspectRatio: rec?.mediaAspectRatio,
+          ownerUid: currentUser.uid,
+        });
+      }
+
+      for (const ch of localChs) {
+        if (cloudChIds.has(ch.id)) continue;
+        const rec = await getYouTubeChannelRecord(ch.id);
+        await saveCloudChannel({
+          id: ch.id,
+          name: ch.name,
+          url: ch.url,
+          logoBlob: rec?.logoBlob,
+          ownerUid: currentUser.uid,
+        });
+      }
+
+      for (const pst of localPsts) {
+        if (cloudPstIds.has(pst.id)) continue;
+        const rec = await getPresetRecord(pst.id);
+        if (!rec?.fileBlob) continue;
+        await saveCloudPreset({
+          id: pst.id,
+          title: pst.title,
+          category: pst.category,
+          description: pst.description,
+          fileName: pst.fileName,
+          fileSize: pst.fileSize,
+          fileType: pst.fileType,
+          fileExt: pst.fileExt,
+          fileBlob: rec.fileBlob,
+          previewKind: rec.previewKind,
+          previewBlob: rec.previewBlob,
+          downloads: pst.downloads,
+          ownerUid: currentUser.uid,
+        });
+      }
+
+      setNotice('All local uploads have been published live for every visitor.');
+      setLocalDraftCount(0);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Unable to sync local uploads.');
+    } finally {
+      setIsSyncingLocal(false);
+    }
+  }, [canEdit, currentUser, isSyncingLocal]);
 
   const showreelVideos = useMemo(
     () => videos.filter((v) => v.section === 'showreels'),
@@ -250,6 +455,7 @@ export default function App() {
 
   const handleFilesSelected = useCallback(
     async (fileList: FileList | File[], section: VideoSection) => {
+      if (!canEdit || !currentUser) return;
       setAudioUnlocked(true);
       const incoming = Array.from(fileList);
       const validVideos = incoming.filter(isVideoFile);
@@ -279,22 +485,10 @@ export default function App() {
             ? Math.max(...existingInSection.map((v) => v.order)) + 1
             : 0;
 
-        const addedVideos: GalleryVideo[] = [];
-
         for (let i = 0; i < validVideos.length; i++) {
           const file = validVideos[i];
           const meta = await extractVideoMetadata(file);
-          const id =
-            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-              ? crypto.randomUUID()
-              : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-          const objectUrl = URL.createObjectURL(file);
-          const createdAt = Date.now() + i;
-          const order = startOrder + i;
-
-          const record: StoredVideoRecord = {
-            id,
+          await createCloudVideo({
             section,
             name: file.name.replace(/\.[^/.]+$/, '') || 'Gallery Video',
             size: file.size,
@@ -304,32 +498,13 @@ export default function App() {
             aspectRatio: meta.aspectRatio,
             ratioLabel: meta.ratioLabel,
             duration: meta.duration,
-            order,
-            createdAt,
+            order: startOrder + i,
             blob: file,
-          };
-
-          await saveVideoRecord(record);
-
-          addedVideos.push({
-            id: record.id,
-            section,
-            name: record.name,
-            size: record.size,
-            type: record.type,
-            width: record.width,
-            height: record.height,
-            aspectRatio: record.aspectRatio,
-            ratioLabel: record.ratioLabel,
-            duration: record.duration,
-            order: record.order,
-            createdAt: record.createdAt,
-            objectUrl,
+            ownerUid: currentUser.uid,
           });
         }
 
         const firstNewIndex = existingInSection.length;
-        setVideos((prev) => [...prev, ...addedVideos]);
         setAudioSection(section);
 
         if (section === 'showreels') {
@@ -339,149 +514,128 @@ export default function App() {
           setReelsIndex(firstNewIndex);
           setReelsPlaying(true);
         }
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : 'Unable to upload video.');
       } finally {
         setProcessing(false);
       }
     },
-    []
+    [canEdit, currentUser]
   );
 
   const handleFileInputChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     section: VideoSection
   ) => {
+    if (!canEdit) return;
     if (e.target.files && e.target.files.length > 0) {
-      handleFilesSelected(e.target.files, section);
+      void handleFilesSelected(e.target.files, section);
       e.target.value = '';
     }
   };
 
   const handleDeleteVideo = useCallback(
     async (id: string, section: VideoSection) => {
+      if (!canEdit) return;
       const target = videosRef.current.find((v) => v.id === id);
-      if (target) {
-        URL.revokeObjectURL(target.objectUrl);
-      }
+      if (!target) return;
 
       const remainingCount = videosRef.current.filter(
         (v) => v.section === section && v.id !== id
       ).length;
 
-      await deleteVideoRecord(id);
-      setVideos((prev) => prev.filter((v) => v.id !== id));
+      try {
+        await deleteCloudVideo(target);
 
-      if (section === 'showreels') {
-        setShowreelIndex((idx) => (remainingCount === 0 ? 0 : Math.min(idx, remainingCount - 1)));
-      } else {
-        setReelsIndex((idx) => (remainingCount === 0 ? 0 : Math.min(idx, remainingCount - 1)));
-      }
+        if (section === 'showreels') {
+          setShowreelIndex((idx) => (remainingCount === 0 ? 0 : Math.min(idx, remainingCount - 1)));
+        } else {
+          setReelsIndex((idx) => (remainingCount === 0 ? 0 : Math.min(idx, remainingCount - 1)));
+        }
 
-      if (remainingCount === 0) {
-        setLightboxTarget((curr) => (curr === section ? null : curr));
+        if (remainingCount === 0) {
+          setLightboxTarget((curr) => (curr === section ? null : curr));
+        }
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : 'Unable to delete video.');
       }
     },
-    []
+    [canEdit]
   );
 
-  const handleImagesSelected = useCallback(async (fileList: FileList | File[]) => {
-    const incoming = Array.from(fileList);
-    const validImages = incoming.filter(isImageFile);
-    const rejectedCount = incoming.length - validImages.length;
+  const handleImagesSelected = useCallback(
+    async (fileList: FileList | File[]) => {
+      if (!canEdit || !currentUser) return;
+      const incoming = Array.from(fileList);
+      const validImages = incoming.filter(isImageFile);
+      const rejectedCount = incoming.length - validImages.length;
 
-    if (rejectedCount > 0 && validImages.length === 0) {
-      setNotice('Please select image files from your gallery (JPG, PNG, WebP, or GIF).');
-      return;
-    }
-
-    if (rejectedCount > 0) {
-      setNotice(`Skipped ${rejectedCount} non-image file${rejectedCount > 1 ? 's' : ''}.`);
-    } else {
-      setNotice(null);
-    }
-
-    if (validImages.length === 0) return;
-
-    setProcessingImages(true);
-    try {
-      const added: GalleryImage[] = [];
-      for (let i = 0; i < validImages.length; i++) {
-        const file = validImages[i];
-        const meta = await extractImageMetadata(file);
-        const id =
-          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-        const objectUrl = URL.createObjectURL(file);
-        const createdAt = Date.now() + i;
-
-        const baseName = file.name.replace(/\.[^/.]+$/, '') || 'Engine Image';
-        const record: StoredImageRecord = {
-          id,
-          name: baseName,
-          title: baseName,
-          description: '',
-          size: file.size,
-          type: file.type || 'image/jpeg',
-          width: meta.width,
-          height: meta.height,
-          aspectRatio: meta.aspectRatio,
-          createdAt,
-          blob: file,
-        };
-
-        await saveImageRecord(record);
-
-        added.push({
-          id: record.id,
-          name: record.name,
-          title: record.title ?? record.name,
-          description: record.description ?? '',
-          size: record.size,
-          type: record.type,
-          width: record.width,
-          height: record.height,
-          aspectRatio: record.aspectRatio,
-          createdAt: record.createdAt,
-          objectUrl,
-        });
+      if (rejectedCount > 0 && validImages.length === 0) {
+        setNotice('Please select image files from your gallery (JPG, PNG, WebP, or GIF).');
+        return;
       }
 
-      setImages((prev) => [...prev, ...added]);
-    } finally {
-      setProcessingImages(false);
-    }
-  }, []);
+      if (rejectedCount > 0) {
+        setNotice(`Skipped ${rejectedCount} non-image file${rejectedCount > 1 ? 's' : ''}.`);
+      } else {
+        setNotice(null);
+      }
+
+      if (validImages.length === 0) return;
+
+      setProcessingImages(true);
+      try {
+        for (let i = 0; i < validImages.length; i++) {
+          const file = validImages[i];
+          const meta = await extractImageMetadata(file);
+          const baseName = file.name.replace(/\.[^/.]+$/, '') || 'Engine Image';
+          await createCloudEngine({
+            name: baseName,
+            title: baseName,
+            description: '',
+            size: file.size,
+            type: file.type || 'image/jpeg',
+            width: meta.width,
+            height: meta.height,
+            aspectRatio: meta.aspectRatio,
+            blob: file,
+            ownerUid: currentUser.uid,
+          });
+        }
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : 'Unable to upload image.');
+      } finally {
+        setProcessingImages(false);
+      }
+    },
+    [canEdit, currentUser]
+  );
 
   const handleImageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEdit) return;
     if (e.target.files && e.target.files.length > 0) {
-      handleImagesSelected(e.target.files);
+      void handleImagesSelected(e.target.files);
       e.target.value = '';
     }
   };
 
   const handleUpdateImageInfo = useCallback(
     async (id: string, updates: { title: string; description: string }) => {
-      await updateImageRecordInfo(id, updates);
-      setImages((prev) =>
-        prev.map((img) =>
-          img.id === id
-            ? { ...img, title: updates.title, description: updates.description }
-            : img
-        )
-      );
+      if (!canEdit) return;
+      await updateCloudEngineInfo(id, updates);
     },
-    []
+    [canEdit]
   );
 
-  const handleDeleteImage = useCallback(async (id: string) => {
-    const target = imagesRef.current.find((img) => img.id === id);
-    if (target) {
-      URL.revokeObjectURL(target.objectUrl);
-    }
-    await deleteImageRecord(id);
-    setImages((prev) => prev.filter((img) => img.id !== id));
-  }, []);
+  const handleDeleteImage = useCallback(
+    async (id: string) => {
+      if (!canEdit) return;
+      const target = imagesRef.current.find((img) => img.id === id);
+      if (!target) return;
+      await deleteCloudEngine(target);
+    },
+    [canEdit]
+  );
 
   const handleSaveChannel = useCallback(
     async (payload: {
@@ -491,71 +645,33 @@ export default function App() {
       logoFile?: File | null;
       removeExistingLogo?: boolean;
     }) => {
-      const existingChannel = payload.id
+      if (!canEdit || !currentUser) return;
+      const existing = payload.id
         ? channelsRef.current.find((ch) => ch.id === payload.id)
         : undefined;
-      const existingRecord = payload.id
-        ? await getYouTubeChannelRecord(payload.id)
-        : null;
 
-      const id =
-        payload.id ??
-        (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
-
-      let nextBlob: Blob | undefined = existingRecord?.logoBlob;
-      let nextObjectUrl: string | undefined = existingChannel?.logoObjectUrl;
-
-      if (payload.logoFile) {
-        if (existingChannel?.logoObjectUrl) {
-          URL.revokeObjectURL(existingChannel.logoObjectUrl);
-        }
-        nextBlob = payload.logoFile;
-        nextObjectUrl = URL.createObjectURL(payload.logoFile);
-      } else if (payload.removeExistingLogo) {
-        if (existingChannel?.logoObjectUrl) {
-          URL.revokeObjectURL(existingChannel.logoObjectUrl);
-        }
-        nextBlob = undefined;
-        nextObjectUrl = undefined;
-      }
-
-      const record: StoredChannelRecord = {
-        id,
+      await saveCloudChannel({
+        existing,
+        id: payload.id,
         name: payload.name,
         url: payload.url,
-        createdAt: existingRecord?.createdAt ?? Date.now(),
-        logoBlob: nextBlob,
-      };
-
-      await saveYouTubeChannelRecord(record);
-
-      const nextChannel: YouTubeChannel = {
-        id: record.id,
-        name: record.name,
-        url: record.url,
-        createdAt: record.createdAt,
-        logoObjectUrl: nextObjectUrl,
-      };
-
-      setChannels((prev) =>
-        payload.id
-          ? prev.map((ch) => (ch.id === payload.id ? nextChannel : ch))
-          : [...prev, nextChannel]
-      );
+        logoBlob: payload.logoFile ?? undefined,
+        removeExistingLogo: payload.removeExistingLogo,
+        ownerUid: currentUser.uid,
+      });
     },
-    []
+    [canEdit, currentUser]
   );
 
-  const handleDeleteChannel = useCallback(async (id: string) => {
-    const target = channelsRef.current.find((ch) => ch.id === id);
-    if (target?.logoObjectUrl) {
-      URL.revokeObjectURL(target.logoObjectUrl);
-    }
-    await deleteYouTubeChannelRecord(id);
-    setChannels((prev) => prev.filter((ch) => ch.id !== id));
-  }, []);
+  const handleDeleteChannel = useCallback(
+    async (id: string) => {
+      if (!canEdit) return;
+      const target = channelsRef.current.find((ch) => ch.id === id);
+      if (!target) return;
+      await deleteCloudChannel(target);
+    },
+    [canEdit]
+  );
 
   const handleSaveService = useCallback(
     async (payload: {
@@ -565,145 +681,85 @@ export default function App() {
       mediaFile?: File | null;
       removeExistingMedia?: boolean;
     }) => {
-      const existingService = payload.id
+      if (!canEdit || !currentUser) return;
+      const existing = payload.id
         ? servicesRef.current.find((s) => s.id === payload.id)
         : undefined;
-      const existingRecord = payload.id
-        ? await getExtraServiceRecord(payload.id)
-        : null;
 
-      const id =
-        payload.id ??
-        (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
-
-      let nextBlob: Blob | undefined = existingRecord?.mediaBlob;
-      let nextObjectUrl: string | undefined = existingService?.mediaObjectUrl;
-      let nextKind: ServiceWorkMediaKind | undefined = existingRecord?.mediaKind;
-      let nextAspect: number | undefined = existingRecord?.mediaAspectRatio;
-
+      let mediaKind: ServiceWorkMediaKind | undefined;
+      let mediaAspectRatio: number | undefined;
       if (payload.mediaFile) {
-        if (existingService?.mediaObjectUrl) {
-          URL.revokeObjectURL(existingService.mediaObjectUrl);
-        }
-        nextBlob = payload.mediaFile;
-        nextObjectUrl = URL.createObjectURL(payload.mediaFile);
         if (isImageFile(payload.mediaFile)) {
-          nextKind = 'image';
+          mediaKind = 'image';
           const meta = await extractImageMetadata(payload.mediaFile);
-          nextAspect = meta.aspectRatio;
+          mediaAspectRatio = meta.aspectRatio;
         } else {
-          nextKind = 'video';
+          mediaKind = 'video';
           const meta = await extractVideoMetadata(payload.mediaFile);
-          nextAspect = meta.aspectRatio;
+          mediaAspectRatio = meta.aspectRatio;
         }
-      } else if (payload.removeExistingMedia) {
-        if (existingService?.mediaObjectUrl) {
-          URL.revokeObjectURL(existingService.mediaObjectUrl);
-        }
-        nextBlob = undefined;
-        nextObjectUrl = undefined;
-        nextKind = undefined;
-        nextAspect = undefined;
       }
 
-      const record: StoredServiceRecord = {
-        id,
+      await saveCloudService({
+        existing,
+        id: payload.id,
         title: payload.title,
         workDetails: payload.workDetails,
-        mediaKind: nextKind,
-        mediaBlob: nextBlob,
-        mediaAspectRatio: nextAspect,
-        createdAt: existingRecord?.createdAt ?? Date.now(),
-      };
-
-      await saveExtraServiceRecord(record);
-
-      const nextService: ExtraService = {
-        id: record.id,
-        title: record.title,
-        workDetails: record.workDetails,
-        mediaKind: record.mediaKind,
-        mediaObjectUrl: nextObjectUrl,
-        mediaAspectRatio: record.mediaAspectRatio,
-        createdAt: record.createdAt,
-      };
-
-      setServices((prev) =>
-        payload.id
-          ? prev.map((s) => (s.id === payload.id ? nextService : s))
-          : [...prev, nextService]
-      );
+        mediaKind,
+        mediaBlob: payload.mediaFile ?? undefined,
+        mediaAspectRatio,
+        removeExistingMedia: payload.removeExistingMedia,
+        ownerUid: currentUser.uid,
+      });
     },
-    []
+    [canEdit, currentUser]
   );
 
-  const handleDeleteService = useCallback(async (id: string) => {
-    const target = servicesRef.current.find((s) => s.id === id);
-    if (target?.mediaObjectUrl) {
-      URL.revokeObjectURL(target.mediaObjectUrl);
-    }
-    await deleteExtraServiceRecord(id);
-    setServices((prev) => prev.filter((s) => s.id !== id));
-  }, []);
+  const handleDeleteService = useCallback(
+    async (id: string) => {
+      if (!canEdit) return;
+      const target = servicesRef.current.find((s) => s.id === id);
+      if (!target) return;
+      await deleteCloudService(target);
+    },
+    [canEdit]
+  );
 
-  const handleQuickUploadPresets = useCallback(async (fileList: FileList | File[]) => {
-    const incoming = Array.from(fileList);
-    if (incoming.length === 0) return;
+  const handleQuickUploadPresets = useCallback(
+    async (fileList: FileList | File[]) => {
+      if (!canEdit || !currentUser) return;
+      const incoming = Array.from(fileList);
+      if (incoming.length === 0) return;
 
-    setProcessingPresets(true);
-    try {
-      const added: PresetItem[] = [];
-      for (let i = 0; i < incoming.length; i++) {
-        const file = incoming[i];
-        const id =
-          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      setProcessingPresets(true);
+      try {
+        for (let i = 0; i < incoming.length; i++) {
+          const file = incoming[i];
+          const title = file.name.replace(/\.[^/.]+$/, '') || 'Preset Pack';
+          const category = inferPresetCategory(file.name);
+          const fileExt = extractFileExtension(file.name);
 
-        const title = file.name.replace(/\.[^/.]+$/, '') || 'Preset Pack';
-        const category = inferPresetCategory(file.name);
-        const fileExt = extractFileExtension(file.name);
-        const fileObjectUrl = URL.createObjectURL(file);
-        const createdAt = Date.now() + i;
-
-        const record: StoredPresetRecord = {
-          id,
-          title,
-          category,
-          description: '',
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type || 'application/octet-stream',
-          fileExt,
-          fileBlob: file,
-          downloads: 0,
-          createdAt,
-        };
-
-        await savePresetRecord(record);
-
-        added.push({
-          id: record.id,
-          title: record.title,
-          category: record.category,
-          description: record.description,
-          fileName: record.fileName,
-          fileSize: record.fileSize,
-          fileType: record.fileType,
-          fileExt: record.fileExt,
-          fileObjectUrl,
-          downloads: 0,
-          createdAt: record.createdAt,
-        });
+          await saveCloudPreset({
+            title,
+            category,
+            description: '',
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type || 'application/octet-stream',
+            fileExt,
+            fileBlob: file,
+            downloads: 0,
+            ownerUid: currentUser.uid,
+          });
+        }
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : 'Unable to upload preset.');
+      } finally {
+        setProcessingPresets(false);
       }
-
-      setPresets((prev) => [...added.reverse(), ...prev]);
-    } finally {
-      setProcessingPresets(false);
-    }
-  }, []);
+    },
+    [canEdit, currentUser]
+  );
 
   const handleSavePreset = useCallback(
     async (payload: {
@@ -715,113 +771,49 @@ export default function App() {
       previewFile?: File | null;
       removeExistingPreview?: boolean;
     }) => {
-      const existingItem = payload.id
+      if (!canEdit || !currentUser) return;
+      const existing = payload.id
         ? presetsRef.current.find((p) => p.id === payload.id)
         : undefined;
-      const existingRecord = payload.id ? await getPresetRecord(payload.id) : null;
 
-      if (!payload.presetFile && !existingRecord?.fileBlob) return;
+      if (!payload.presetFile && !existing?.fileMediaId) return;
 
-      const id =
-        payload.id ??
-        (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
-
-      let nextFileBlob: Blob = existingRecord!.fileBlob;
-      let nextFileName = existingRecord?.fileName ?? 'preset.bin';
-      let nextFileSize = existingRecord?.fileSize ?? 0;
-      let nextFileType = existingRecord?.fileType ?? 'application/octet-stream';
-      let nextFileExt = existingRecord?.fileExt ?? 'FILE';
-      let nextFileObjectUrl = existingItem?.fileObjectUrl ?? '';
-
-      if (payload.presetFile) {
-        if (existingItem?.fileObjectUrl) {
-          URL.revokeObjectURL(existingItem.fileObjectUrl);
-        }
-        nextFileBlob = payload.presetFile;
-        nextFileName = payload.presetFile.name;
-        nextFileSize = payload.presetFile.size;
-        nextFileType = payload.presetFile.type || 'application/octet-stream';
-        nextFileExt = extractFileExtension(payload.presetFile.name);
-        nextFileObjectUrl = URL.createObjectURL(payload.presetFile);
-      }
-
-      let nextPreviewBlob: Blob | undefined = existingRecord?.previewBlob;
-      let nextPreviewKind: PresetPreviewKind | undefined = existingRecord?.previewKind;
-      let nextPreviewObjectUrl: string | undefined = existingItem?.previewObjectUrl;
-
+      let previewKind: PresetPreviewKind | undefined;
       if (payload.previewFile) {
-        if (existingItem?.previewObjectUrl) {
-          URL.revokeObjectURL(existingItem.previewObjectUrl);
-        }
-        nextPreviewBlob = payload.previewFile;
-        nextPreviewKind = isImageFile(payload.previewFile) ? 'image' : 'video';
-        nextPreviewObjectUrl = URL.createObjectURL(payload.previewFile);
-      } else if (payload.removeExistingPreview) {
-        if (existingItem?.previewObjectUrl) {
-          URL.revokeObjectURL(existingItem.previewObjectUrl);
-        }
-        nextPreviewBlob = undefined;
-        nextPreviewKind = undefined;
-        nextPreviewObjectUrl = undefined;
+        previewKind = isImageFile(payload.previewFile) ? 'image' : 'video';
       }
 
-      const record: StoredPresetRecord = {
-        id,
+      await saveCloudPreset({
+        existing,
+        id: payload.id,
         title: payload.title,
         category: payload.category,
         description: payload.description,
-        fileName: nextFileName,
-        fileSize: nextFileSize,
-        fileType: nextFileType,
-        fileExt: nextFileExt,
-        fileBlob: nextFileBlob,
-        previewKind: nextPreviewKind,
-        previewBlob: nextPreviewBlob,
-        downloads: existingRecord?.downloads ?? 0,
-        createdAt: existingRecord?.createdAt ?? Date.now(),
-      };
-
-      await savePresetRecord(record);
-
-      const nextPreset: PresetItem = {
-        id: record.id,
-        title: record.title,
-        category: record.category,
-        description: record.description,
-        fileName: record.fileName,
-        fileSize: record.fileSize,
-        fileType: record.fileType,
-        fileExt: record.fileExt,
-        fileObjectUrl: nextFileObjectUrl,
-        previewKind: record.previewKind,
-        previewObjectUrl: nextPreviewObjectUrl,
-        downloads: record.downloads,
-        createdAt: record.createdAt,
-      };
-
-      setPresets((prev) =>
-        payload.id
-          ? prev.map((p) => (p.id === payload.id ? nextPreset : p))
-          : [nextPreset, ...prev]
-      );
+        fileName: payload.presetFile?.name,
+        fileSize: payload.presetFile?.size,
+        fileType: payload.presetFile?.type || 'application/octet-stream',
+        fileExt: payload.presetFile ? extractFileExtension(payload.presetFile.name) : undefined,
+        fileBlob: payload.presetFile ?? undefined,
+        previewKind,
+        previewBlob: payload.previewFile ?? undefined,
+        removeExistingPreview: payload.removeExistingPreview,
+        ownerUid: currentUser.uid,
+      });
     },
-    []
+    [canEdit, currentUser]
   );
 
-  const handleDeletePreset = useCallback(async (id: string) => {
-    const target = presetsRef.current.find((p) => p.id === id);
-    if (target) {
-      URL.revokeObjectURL(target.fileObjectUrl);
-      if (target.previewObjectUrl) {
-        URL.revokeObjectURL(target.previewObjectUrl);
-      }
-    }
-    await deletePresetRecord(id);
-    setPresets((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+  const handleDeletePreset = useCallback(
+    async (id: string) => {
+      if (!canEdit) return;
+      const target = presetsRef.current.find((p) => p.id === id);
+      if (!target) return;
+      await deleteCloudPreset(target);
+    },
+    [canEdit]
+  );
 
+  // Public visitors can download any published preset read-only without mutating Firestore
   const handleDownloadPreset = useCallback(async (preset: PresetItem) => {
     const link = document.createElement('a');
     link.href = preset.fileObjectUrl;
@@ -829,11 +821,29 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  }, []);
 
-    const nextCount = await incrementPresetDownload(preset.id);
-    setPresets((prev) =>
-      prev.map((p) => (p.id === preset.id ? { ...p, downloads: nextCount } : p))
-    );
+  const handleOwnerLogin = useCallback(async () => {
+    try {
+      const user = await signInWithOwnerGoogle();
+      if (!isOwnerUser(user)) {
+        setNotice(
+          `Signed in as ${user.email ?? 'visitor'}. Only the portfolio owner (${OWNER_ADMIN_EMAIL}) can publish or modify content.`
+        );
+      } else {
+        setNotice(null);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      if (!message.includes('popup-closed-by-user')) {
+        setNotice('Google sign-in could not be completed. Please try again.');
+      }
+    }
+  }, []);
+
+  const handleOwnerLogout = useCallback(async () => {
+    await signOutOwner();
+    setNotice(null);
   }, []);
 
   const lightboxList = lightboxTarget === 'reels' ? reelsVideos : showreelVideos;
@@ -848,34 +858,38 @@ export default function App() {
     <div id="top" className="relative min-h-screen bg-[#0B0908] text-[#F7F1E8] flex flex-col">
       <LivingForestBackground />
 
-      {/* Dedicated Hidden File Inputs */}
-      <input
-        ref={showreelInputRef}
-        type="file"
-        accept="video/*"
-        multiple
-        onChange={(e) => handleFileInputChange(e, 'showreels')}
-        className="sr-only"
-        aria-label="Upload videos to Showreels"
-      />
-      <input
-        ref={reelsInputRef}
-        type="file"
-        accept="video/*"
-        multiple
-        onChange={(e) => handleFileInputChange(e, 'reels')}
-        className="sr-only"
-        aria-label="Upload videos to My Reels and Edits"
-      />
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        onChange={handleImageInputChange}
-        className="sr-only"
-        aria-label="Upload images to Gallery"
-      />
+      {/* Dedicated Hidden File Inputs (owner only) */}
+      {canEdit && (
+        <>
+          <input
+            ref={showreelInputRef}
+            type="file"
+            accept="video/*"
+            multiple
+            onChange={(e) => handleFileInputChange(e, 'showreels')}
+            className="sr-only"
+            aria-label="Upload videos to Showreels"
+          />
+          <input
+            ref={reelsInputRef}
+            type="file"
+            accept="video/*"
+            multiple
+            onChange={(e) => handleFileInputChange(e, 'reels')}
+            className="sr-only"
+            aria-label="Upload videos to My Reels and Edits"
+          />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleImageInputChange}
+            className="sr-only"
+            aria-label="Upload images to Gallery"
+          />
+        </>
+      )}
 
       <Navbar onNavigateHome={currentPage === 'presets' ? navigateToHome : undefined} />
 
@@ -901,6 +915,7 @@ export default function App() {
         {currentPage === 'presets' ? (
           isHydrated ? (
             <PresetsPage
+              canEdit={canEdit}
               presets={presets}
               isProcessing={processingPresets}
               onBackHome={navigateToHome}
@@ -924,165 +939,174 @@ export default function App() {
               <WelcomeAirshipBanner />
             </ParallaxLayer>
 
-        {/* Section 1: Upper 3D Stage — Showreels */}
-        <section
-          ref={showreelSectionRef}
-          className="mx-auto w-full max-w-[1440px] px-2 pt-4 pb-10 sm:px-6 lg:pt-6"
-        >
-          <ParallaxLayer offset={14}>
-            <div className="mb-4 flex items-center justify-between gap-4 px-2 sm:px-0">
-              <h2 className="text-2xl font-semibold tracking-tight text-[#FAF6F0] sm:text-3xl">
-                Showreels
-              </h2>
-              <button
-                type="button"
-                onClick={() => showreelInputRef.current?.click()}
-                disabled={processingShowreels}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>{processingShowreels ? 'Adding...' : 'Upload Videos'}</span>
-              </button>
-            </div>
-          </ParallaxLayer>
+            {/* Section 1: Upper 3D Stage — Showreels */}
+            <section
+              ref={showreelSectionRef}
+              className="mx-auto w-full max-w-[1440px] px-2 pt-4 pb-10 sm:px-6 lg:pt-6"
+            >
+              <ParallaxLayer offset={14}>
+                <div className="mb-4 flex items-center justify-between gap-4 px-2 sm:px-0">
+                  <h2 className="text-2xl font-semibold tracking-tight text-[#FAF6F0] sm:text-3xl">
+                    Showreels
+                  </h2>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => showreelInputRef.current?.click()}
+                      disabled={processingShowreels}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>{processingShowreels ? 'Adding...' : 'Upload Videos'}</span>
+                    </button>
+                  )}
+                </div>
+              </ParallaxLayer>
 
-          {!isHydrated ? (
-            <div className="flex h-[420px] w-full items-center justify-center">
-              <p className="text-sm text-[#A89A8A]">Opening local gallery...</p>
-            </div>
-          ) : (
-            <ParallaxLayer offset={26}>
-              <TigerCarousel3D
-                videos={showreelVideos}
-                activeIndex={showreelIndex}
-                onActiveIndexChange={setShowreelIndex}
-                onFilesSelected={(files) => handleFilesSelected(files, 'showreels')}
-                onDeleteVideo={(id) => handleDeleteVideo(id, 'showreels')}
-                isPlaying={isShowreelsActive}
-                isMuted={audioSection !== 'showreels'}
+              {!isHydrated ? (
+                <div className="flex h-[420px] w-full items-center justify-center">
+                  <p className="text-sm text-[#A89A8A]">Loading showcase...</p>
+                </div>
+              ) : (
+                <ParallaxLayer offset={26}>
+                  <TigerCarousel3D
+                    canEdit={canEdit}
+                    videos={showreelVideos}
+                    activeIndex={showreelIndex}
+                    onActiveIndexChange={setShowreelIndex}
+                    onFilesSelected={(files) => handleFilesSelected(files, 'showreels')}
+                    onDeleteVideo={(id) => handleDeleteVideo(id, 'showreels')}
+                    isPlaying={isShowreelsActive}
+                    isMuted={audioSection !== 'showreels'}
+                    audioUnlocked={audioUnlocked}
+                    onTogglePlay={() => {
+                      setAudioUnlocked(true);
+                      setAudioSection('showreels');
+                      setShowreelPlaying((prev) => !prev);
+                    }}
+                    onTriggerFilePicker={() => showreelInputRef.current?.click()}
+                    onOpenLightbox={() => setLightboxTarget('showreels')}
+                    onFocusSection={() => {
+                      setAudioUnlocked(true);
+                      setAudioSection('showreels');
+                    }}
+                    isProcessing={processingShowreels}
+                  />
+                </ParallaxLayer>
+              )}
+            </section>
+
+            {/* Flying Plane with "Contact Now" Banner between Showreels and My Reels and Edits */}
+            <ParallaxLayer offset={20}>
+              <FlyingBannerPlane
                 audioUnlocked={audioUnlocked}
-                onTogglePlay={() => {
-                  setAudioUnlocked(true);
-                  setAudioSection('showreels');
-                  setShowreelPlaying((prev) => !prev);
-                }}
-                onTriggerFilePicker={() => showreelInputRef.current?.click()}
-                onOpenLightbox={() => setLightboxTarget('showreels')}
-                onFocusSection={() => {
-                  setAudioUnlocked(true);
-                  setAudioSection('showreels');
-                }}
-                isProcessing={processingShowreels}
+                isVideoAudioPlaying={
+                  (isShowreelsActive && showreelVideos.length > 0 && audioSection === 'showreels') ||
+                  (isReelsActive && reelsVideos.length > 0 && audioSection === 'reels')
+                }
               />
             </ParallaxLayer>
-          )}
-        </section>
 
-        {/* Flying Plane with "Contact Now" Banner between Showreels and My Reels and Edits */}
-        <ParallaxLayer offset={20}>
-          <FlyingBannerPlane
-            audioUnlocked={audioUnlocked}
-            isVideoAudioPlaying={
-              (isShowreelsActive && showreelVideos.length > 0 && audioSection === 'showreels') ||
-              (isReelsActive && reelsVideos.length > 0 && audioSection === 'reels')
-            }
-          />
-        </ParallaxLayer>
+            {/* Section 2: My Reels and Edits (Left Half) & Animated Experience (Right Half) */}
+            <section
+              ref={reelsSectionRef}
+              className="mx-auto w-full max-w-[1440px] px-4 pt-6 pb-16 sm:px-6"
+            >
+              <div className="grid grid-cols-1 items-center gap-10 md:grid-cols-2 md:gap-8">
+                <ParallaxLayer offset={20} className="w-full min-w-0">
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <h2 className="text-xl font-semibold tracking-tight text-[#FAF6F0] sm:text-2xl">
+                      My Reels and Edits
+                    </h2>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => reelsInputRef.current?.click()}
+                        disabled={processingReels}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>{processingReels ? 'Adding...' : 'Upload Reels'}</span>
+                      </button>
+                    )}
+                  </div>
 
-        {/* Section 2: My Reels and Edits (Left Half) & Animated Experience (Right Half) */}
-        <section
-          ref={reelsSectionRef}
-          className="mx-auto w-full max-w-[1440px] px-4 pt-6 pb-16 sm:px-6"
-        >
-          <div className="grid grid-cols-1 items-center gap-10 md:grid-cols-2 md:gap-8">
-            <ParallaxLayer offset={20} className="w-full min-w-0">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <h2 className="text-xl font-semibold tracking-tight text-[#FAF6F0] sm:text-2xl">
-                  My Reels and Edits
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => reelsInputRef.current?.click()}
-                  disabled={processingReels}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>{processingReels ? 'Adding...' : 'Upload Reels'}</span>
-                </button>
+                  {isHydrated && (
+                    <ReelsOrbitalCarousel3D
+                      canEdit={canEdit}
+                      videos={reelsVideos}
+                      activeIndex={reelsIndex}
+                      onActiveIndexChange={setReelsIndex}
+                      onFilesSelected={(files) => handleFilesSelected(files, 'reels')}
+                      onDeleteVideo={(id) => handleDeleteVideo(id, 'reels')}
+                      isPlaying={isReelsActive}
+                      isMuted={audioSection !== 'reels'}
+                      audioUnlocked={audioUnlocked}
+                      onTogglePlay={() => {
+                        setAudioUnlocked(true);
+                        setAudioSection('reels');
+                        setReelsPlaying((prev) => !prev);
+                      }}
+                      onTriggerFilePicker={() => reelsInputRef.current?.click()}
+                      onOpenLightbox={() => setLightboxTarget('reels')}
+                      onFocusSection={() => {
+                        setAudioUnlocked(true);
+                        setAudioSection('reels');
+                      }}
+                      isProcessing={processingReels}
+                    />
+                  )}
+                </ParallaxLayer>
+
+                <ParallaxLayer offset={38} className="flex w-full items-center justify-center">
+                  <ExperienceShowcase />
+                </ParallaxLayer>
               </div>
+            </section>
 
-              {isHydrated && (
-                <ReelsOrbitalCarousel3D
-                  videos={reelsVideos}
-                  activeIndex={reelsIndex}
-                  onActiveIndexChange={setReelsIndex}
-                  onFilesSelected={(files) => handleFilesSelected(files, 'reels')}
-                  onDeleteVideo={(id) => handleDeleteVideo(id, 'reels')}
-                  isPlaying={isReelsActive}
-                  isMuted={audioSection !== 'reels'}
-                  audioUnlocked={audioUnlocked}
-                  onTogglePlay={() => {
-                    setAudioUnlocked(true);
-                    setAudioSection('reels');
-                    setReelsPlaying((prev) => !prev);
-                  }}
-                  onTriggerFilePicker={() => reelsInputRef.current?.click()}
-                  onOpenLightbox={() => setLightboxTarget('reels')}
-                  onFocusSection={() => {
-                    setAudioUnlocked(true);
-                    setAudioSection('reels');
-                  }}
-                  isProcessing={processingReels}
+            {/* Section 3: Engine Used by Me — 3D Curved Boxes */}
+            {isHydrated && (
+              <ParallaxLayer offset={24}>
+                <ImageMarqueeSection
+                  canEdit={canEdit}
+                  images={images}
+                  onFilesSelected={handleImagesSelected}
+                  onTriggerFilePicker={() => imageInputRef.current?.click()}
+                  onUpdateImageInfo={handleUpdateImageInfo}
+                  onDeleteImage={handleDeleteImage}
+                  isProcessing={processingImages}
                 />
-              )}
-            </ParallaxLayer>
+              </ParallaxLayer>
+            )}
 
-            <ParallaxLayer offset={38} className="flex w-full items-center justify-center">
-              <ExperienceShowcase />
-            </ParallaxLayer>
-          </div>
-        </section>
+            {/* Section 4: Extra Services */}
+            {isHydrated && (
+              <ParallaxLayer offset={21}>
+                <ExtraServicesSection
+                  canEdit={canEdit}
+                  services={services}
+                  presetsCount={presets.length}
+                  onOpenPresets={navigateToPresets}
+                  onSaveService={handleSaveService}
+                  onDeleteService={handleDeleteService}
+                />
+              </ParallaxLayer>
+            )}
 
-        {/* Section 3: Engine Used by Me — 3D Curved Boxes */}
-        {isHydrated && (
-          <ParallaxLayer offset={24}>
-            <ImageMarqueeSection
-              images={images}
-              onFilesSelected={handleImagesSelected}
-              onTriggerFilePicker={() => imageInputRef.current?.click()}
-              onUpdateImageInfo={handleUpdateImageInfo}
-              onDeleteImage={handleDeleteImage}
-              isProcessing={processingImages}
-            />
-          </ParallaxLayer>
-        )}
+            {/* Section 5: YouTube Channels */}
+            {isHydrated && (
+              <ParallaxLayer offset={18}>
+                <YouTubeChannelsSection
+                  canEdit={canEdit}
+                  channels={channels}
+                  onSaveChannel={handleSaveChannel}
+                  onDeleteChannel={handleDeleteChannel}
+                />
+              </ParallaxLayer>
+            )}
 
-        {/* Section 4: Extra Services */}
-        {isHydrated && (
-          <ParallaxLayer offset={21}>
-            <ExtraServicesSection
-              services={services}
-              presetsCount={presets.length}
-              onOpenPresets={navigateToPresets}
-              onSaveService={handleSaveService}
-              onDeleteService={handleDeleteService}
-            />
-          </ParallaxLayer>
-        )}
-
-        {/* Section 5: YouTube Channels */}
-        {isHydrated && (
-          <ParallaxLayer offset={18}>
-            <YouTubeChannelsSection
-              channels={channels}
-              onSaveChannel={handleSaveChannel}
-              onDeleteChannel={handleDeleteChannel}
-            />
-          </ParallaxLayer>
-        )}
-
-        {/* Section 5: Contact */}
-        <ContactSection />
+            {/* Section 6: Contact */}
+            <ContactSection />
           </>
         )}
       </main>
@@ -1092,17 +1116,63 @@ export default function App() {
         className="relative z-10 border-t border-white/10 bg-[#041108]/92 py-5"
       >
         <div className="mx-auto flex max-w-[1320px] flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-6">
-          <span className="inline-flex items-center gap-2 text-xs font-medium tracking-[0.06em] text-[#8C7F70]">
-            <span className="h-6 w-6 shrink-0 overflow-hidden rounded-md border border-white/15 bg-[#1B130E]">
-              <img
-                src="/assets/aistudio/63cd9e8a-889e-4af6-a583-da515677f63c_6ede8ecc.png"
-                alt="PURVEY tiger mascot"
-                referrerPolicy="no-referrer"
-                className="h-full w-full object-cover"
-              />
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="inline-flex items-center gap-2 text-xs font-medium tracking-[0.06em] text-[#8C7F70]">
+              <span className="h-6 w-6 shrink-0 overflow-hidden rounded-md border border-white/15 bg-[#1B130E]">
+                <img
+                  src="/assets/aistudio/63cd9e8a-889e-4af6-a583-da515677f63c_6ede8ecc.png"
+                  alt="PURVEY tiger mascot"
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full object-cover"
+                />
+              </span>
+              <span>PURVEY</span>
             </span>
-            <span>PURVEY</span>
-          </span>
+
+            {authReady && (
+              currentUser ? (
+                <div className="flex flex-wrap items-center gap-3 text-xs text-[#8C7F70]">
+                  {canEdit && localDraftCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSyncLocalDrafts}
+                      disabled={isSyncingLocal}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[#F97316]/40 bg-[#1B130E]/90 px-2.5 py-1 text-[11px] font-medium text-[#FDBA74] transition-colors hover:border-[#F97316] hover:text-[#FFF7ED] disabled:opacity-60 cursor-pointer"
+                    >
+                      <CloudUpload className="h-3 w-3" />
+                      <span>
+                        {isSyncingLocal
+                          ? 'Publishing...'
+                          : `Publish ${localDraftCount} Local Upload${localDraftCount > 1 ? 's' : ''}`}
+                      </span>
+                    </button>
+                  )}
+
+                  <span className="text-[11px] text-[#8C7F70]">
+                    {canEdit ? 'Owner Mode' : 'Signed In'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleOwnerLogout}
+                    className="inline-flex items-center gap-1 text-[11px] text-[#8C7F70] transition-colors hover:text-[#FAF6F0] cursor-pointer"
+                  >
+                    <LogOut className="h-3 w-3" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOwnerLogin}
+                  aria-label="Owner Sign In"
+                  className="inline-flex items-center gap-1 text-[11px] text-[#6B5F52] transition-colors hover:text-[#B6A99A] cursor-pointer"
+                >
+                  <Lock className="h-3 w-3" />
+                  <span>Owner</span>
+                </button>
+              )
+            )}
+          </div>
           <SocialLinks variant="compact" />
         </div>
       </footer>
@@ -1111,7 +1181,7 @@ export default function App() {
         video={activeLightboxVideo}
         onClose={() => setLightboxTarget(null)}
         onDelete={
-          activeLightboxVideo
+          canEdit && activeLightboxVideo
             ? () => handleDeleteVideo(activeLightboxVideo.id, activeLightboxVideo.section)
             : undefined
         }

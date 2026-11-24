@@ -55,6 +55,11 @@ export default defineConfig(() => {
                 test: /[\\/]node_modules[\\/]lucide-react[\\/]/,
                 priority: 10,
               },
+              {
+                name: 'vendor-firebase',
+                test: /[\\/]node_modules[\\/](@?firebase)[\\/]/,
+                priority: 12,
+              },
             ],
           },
         },

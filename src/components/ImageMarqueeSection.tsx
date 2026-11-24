@@ -5,6 +5,7 @@ import { Check, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
 import { GalleryImage } from '../types/image';
 
 interface ImageMarqueeSectionProps {
+  canEdit: boolean;
   images: GalleryImage[];
   onFilesSelected: (files: FileList | File[]) => void;
   onTriggerFilePicker: () => void;
@@ -45,6 +46,7 @@ function computeCardSize(
 }
 
 export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
+  canEdit,
   images,
   onFilesSelected,
   onTriggerFilePicker,
@@ -657,6 +659,7 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     if (e.dataTransfer.types.includes('Files')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
@@ -665,12 +668,14 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
   };
 
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOverFiles(false);
     }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canEdit) return;
     e.preventDefault();
     setIsDragOverFiles(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -684,15 +689,17 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
         <h2 className="text-xl font-semibold tracking-tight text-[#FAF6F0] sm:text-2xl">
           Engine Used by Me
         </h2>
-        <button
-          type="button"
-          onClick={onTriggerFilePicker}
-          disabled={isProcessing}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>{isProcessing ? 'Adding...' : 'Upload Images'}</span>
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={onTriggerFilePicker}
+            disabled={isProcessing}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>{isProcessing ? 'Adding...' : 'Upload Images'}</span>
+          </button>
+        )}
       </div>
 
       <div
@@ -701,9 +708,9 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
         role="region"
         aria-label="Engine Used by Me 3D Curved Carousel"
         onKeyDown={handleKeyDown}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        onDragOver={canEdit ? handleDragOver : undefined}
+        onDragLeave={canEdit ? handleDragLeave : undefined}
+        onDrop={canEdit ? handleDrop : undefined}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -715,20 +722,28 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
       >
         {images.length === 0 ? (
           <div className="flex h-full w-full flex-col items-center justify-center px-4 text-center">
-            <p className="max-w-md text-sm leading-relaxed text-[#B6A99A]">
-              {isDragOverFiles
-                ? 'Drop your images here.'
-                : 'Upload images of the engines and tools you use. Drag horizontally for 3D browsing and click any curved box to write or read details.'}
-            </p>
-            <button
-              type="button"
-              onClick={onTriggerFilePicker}
-              disabled={isProcessing}
-              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#EA580C] px-4 py-2.5 text-xs font-semibold text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0908] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Upload className="h-4 w-4" />
-              {isProcessing ? 'Loading...' : 'Upload from Gallery'}
-            </button>
+            {canEdit ? (
+              <>
+                <p className="max-w-md text-sm leading-relaxed text-[#B6A99A]">
+                  {isDragOverFiles
+                    ? 'Drop your images here.'
+                    : 'Upload images of the engines and tools you use. Drag horizontally for 3D browsing and click any curved box to write or read details.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={onTriggerFilePicker}
+                  disabled={isProcessing}
+                  className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#EA580C] px-4 py-2.5 text-xs font-semibold text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0908] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <Upload className="h-4 w-4" />
+                  {isProcessing ? 'Loading...' : 'Upload from Gallery'}
+                </button>
+              </>
+            ) : (
+              <p className="max-w-md text-sm leading-relaxed text-[#B6A99A]">
+                Tools and engines showcase coming soon.
+              </p>
+            )}
           </div>
         ) : (
           <div
@@ -781,19 +796,21 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
                       className="pointer-events-none block h-full w-full rounded-[28px] object-cover"
                     />
 
-                    <button
-                      type="button"
-                      data-delete-btn="true"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(img.id);
-                      }}
-                      aria-label={`Delete ${img.title}`}
-                      title="Delete image"
-                      className="absolute top-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/15 bg-[#0B0908]/85 text-[#FAF6F0] opacity-0 backdrop-blur-sm transition-all duration-150 hover:border-red-500/60 hover:bg-red-600 hover:text-white group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        data-delete-btn="true"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(img.id);
+                        }}
+                        aria-label={`Delete ${img.title}`}
+                        title="Delete image"
+                        className="absolute top-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/15 bg-[#0B0908]/85 text-[#FAF6F0] opacity-0 backdrop-blur-sm transition-all duration-150 hover:border-red-500/60 hover:bg-red-600 hover:text-white group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
 
                   {/* Larger Title Drawer emerging from under the single centered image box, fading back under on scroll up */}
@@ -871,7 +888,7 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
             </div>
 
             <div className="flex flex-1 flex-col justify-between overflow-y-auto p-6 md:p-7">
-              {isEditing ? (
+              {canEdit && isEditing ? (
                 <form onSubmit={handleSaveInfo} className="flex flex-1 flex-col justify-between gap-5">
                   <div className="space-y-4 pt-2 md:pt-4">
                     <div>
@@ -944,35 +961,39 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
                         </p>
                       ) : (
                         <p className="text-sm text-[#8C7F70]">
-                          No information written yet. Click &ldquo;Write Info&rdquo; below to add your notes.
+                          {canEdit
+                            ? 'No information written yet. Click \u201CWrite Info\u201D below to add your notes.'
+                            : 'No additional notes provided.'}
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(selectedImage.id)}
-                      className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 hover:text-red-200 whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete Image
-                    </button>
+                  {canEdit && (
+                    <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(selectedImage.id)}
+                        className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 hover:text-red-200 whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete Image
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDraftTitle(selectedImage.title);
-                        setDraftDescription(selectedImage.description);
-                        setIsEditing(true);
-                      }}
-                      className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#EA580C] px-4 text-xs font-semibold text-[#FFF7ED] transition-colors hover:bg-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      {selectedImage.description ? 'Edit Info' : 'Write Info'}
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDraftTitle(selectedImage.title);
+                          setDraftDescription(selectedImage.description);
+                          setIsEditing(true);
+                        }}
+                        className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#EA580C] px-4 text-xs font-semibold text-[#FFF7ED] transition-colors hover:bg-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        {selectedImage.description ? 'Edit Info' : 'Write Info'}
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>

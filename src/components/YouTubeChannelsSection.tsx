@@ -14,6 +14,7 @@ import { normalizeYouTubeUrl } from '../utils/channelStorage';
 import { isImageFile } from '../utils/imageStorage';
 
 interface YouTubeChannelsSectionProps {
+  canEdit: boolean;
   channels: YouTubeChannel[];
   onSaveChannel: (payload: {
     id?: string;
@@ -26,6 +27,7 @@ interface YouTubeChannelsSectionProps {
 }
 
 export const YouTubeChannelsSection: React.FC<YouTubeChannelsSectionProps> = ({
+  canEdit,
   channels,
   onSaveChannel,
   onDeleteChannel,
@@ -166,29 +168,39 @@ export const YouTubeChannelsSection: React.FC<YouTubeChannelsSectionProps> = ({
           YouTube Channels
         </h2>
 
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>Add Channel</span>
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Add Channel</span>
+          </button>
+        )}
       </div>
 
       {channels.length === 0 ? (
         <div className="flex min-h-[160px] w-full flex-col items-center justify-center px-4 py-8 text-center">
-          <p className="max-w-md text-sm leading-relaxed text-[#B6A99A]">
-            Add your YouTube channels with each channel&rsquo;s logo, name, and link so visitors can click straight to your channel.
-          </p>
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#EA580C] px-4 py-2.5 text-xs font-semibold text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0908] whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add YouTube Channel</span>
-          </button>
+          {canEdit ? (
+            <>
+              <p className="max-w-md text-sm leading-relaxed text-[#B6A99A]">
+                Add your YouTube channels with each channel&rsquo;s logo, name, and link so visitors can click straight to your channel.
+              </p>
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#EA580C] px-4 py-2.5 text-xs font-semibold text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0908] whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add YouTube Channel</span>
+              </button>
+            </>
+          ) : (
+            <p className="max-w-md text-sm leading-relaxed text-[#B6A99A]">
+              YouTube channels coming soon.
+            </p>
+          )}
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-4 sm:gap-5">
@@ -243,33 +255,36 @@ export const YouTubeChannelsSection: React.FC<YouTubeChannelsSectionProps> = ({
               </a>
 
               {/* Glassy Trailing Edit & Delete Controls */}
-              <div className="flex shrink-0 items-center gap-1 border-l border-white/15 pl-2 opacity-85 transition-opacity duration-150 sm:opacity-45 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                <button
-                  type="button"
-                  onClick={() => openEditModal(channel)}
-                  aria-label={`Edit ${channel.name}`}
-                  title="Edit channel"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-white/75 transition-colors duration-150 hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 cursor-pointer"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDeleteChannel(channel.id)}
-                  aria-label={`Delete ${channel.name}`}
-                  title="Delete channel"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-white/75 transition-colors duration-150 hover:bg-red-500/25 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 cursor-pointer"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              {canEdit && (
+                <div className="flex shrink-0 items-center gap-1 border-l border-white/15 pl-2 opacity-85 transition-opacity duration-150 sm:opacity-45 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(channel)}
+                    aria-label={`Edit ${channel.name}`}
+                    title="Edit channel"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-white/75 transition-colors duration-150 hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 cursor-pointer"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteChannel(channel.id)}
+                    aria-label={`Delete ${channel.name}`}
+                    title="Delete channel"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-white/75 transition-colors duration-150 hover:bg-red-500/25 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 cursor-pointer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
 
       {/* Add / Edit YouTube Channel Modal (Portaled to document.body) */}
-      {modalOpen &&
+      {canEdit &&
+        modalOpen &&
         typeof document !== 'undefined' &&
         createPortal(
           <div
