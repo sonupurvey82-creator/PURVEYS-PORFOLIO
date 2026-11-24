@@ -264,7 +264,7 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
   }, [cardSizes, cardGap]);
 
   const maxSnapIndex = useMemo(() => {
-    return Math.max(0, images.length - 1);
+    return images.length >= 2 ? images.length - 2 : 0;
   }, [images.length]);
 
   const dynamicStageHeight = useMemo(() => {
@@ -297,36 +297,39 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
     if (count === 0 || baseCenters.length !== count) return;
 
     const vIdx = virtualIndexRef.current;
-    const clampedVIdx = Math.max(0, Math.min(maxSnapIndex, vIdx));
-    const lowIdx = Math.floor(clampedVIdx);
-    const highIdx = Math.min(maxSnapIndex, lowIdx + 1);
-    const frac = clampedVIdx - lowIdx;
+    const pivotIdx = count >= 2 ? vIdx + 0.5 : vIdx;
+    const clampedPivot = Math.max(0, Math.min(count - 1, pivotIdx));
+    const lowIdx = Math.floor(clampedPivot);
+    const highIdx = Math.min(count - 1, lowIdx + 1);
+    const frac = clampedPivot - lowIdx;
 
     let focalCenter = baseCenters[lowIdx] + (baseCenters[highIdx] - baseCenters[lowIdx]) * frac;
 
     if (vIdx < 0) {
-      focalCenter += vIdx * (cardSizes[0]?.width ?? 240) * 0.65;
+      focalCenter += vIdx * (cardSizes[0]?.width ?? 220) * 0.6;
     } else if (vIdx > maxSnapIndex) {
-      focalCenter += (vIdx - maxSnapIndex) * (cardSizes[count - 1]?.width ?? 240) * 0.65;
+      focalCenter += (vIdx - maxSnapIndex) * (cardSizes[count - 1]?.width ?? 220) * 0.6;
     }
 
     const reducedMotion = reducedMotionRef.current;
+    const halfSpan = count >= 2 ? 0.5 : 0;
 
     for (let i = 0; i < count; i++) {
       const img = images[i];
       const el = cardRefs.current.get(img.id);
       if (!el) continue;
 
-      const d = i - vIdx;
+      const d = i - pivotIdx;
       const absD = Math.abs(d);
+      const edgeDist = Math.max(0, absD - halfSpan);
 
       const tx = baseCenters[i] - focalCenter;
-      const tz = reducedMotion ? -absD * 50 : -Math.min(460, absD * 185);
-      const ty = reducedMotion ? 0 : Math.min(26, absD * absD * 7);
-      const rotateY = reducedMotion ? 0 : Math.max(-44, Math.min(44, d * 20));
-      const scale = Math.max(0.72, 1 - absD * 0.11);
-      const opacity = absD > 3.2 ? 0 : Math.max(0, 1 - absD * 0.28);
-      const zIndex = 100 - Math.round(absD * 12);
+      const tz = reducedMotion ? -edgeDist * 50 : -Math.min(460, edgeDist * 195);
+      const ty = reducedMotion ? 0 : Math.min(26, edgeDist * edgeDist * 8);
+      const rotateY = reducedMotion ? 0 : Math.max(-44, Math.min(44, d * (edgeDist < 0.05 ? 6 : 22)));
+      const scale = Math.max(0.72, 1 - edgeDist * 0.12);
+      const opacity = edgeDist > 2.4 ? 0 : Math.max(0, 1 - edgeDist * 0.34);
+      const zIndex = 100 - Math.round(edgeDist * 14);
 
       el.style.transform = `translate3d(calc(-50% + ${tx.toFixed(2)}px), calc(-50% - ${(
         ty + 18
@@ -335,7 +338,7 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
       )})`;
       el.style.opacity = opacity.toFixed(3);
       el.style.zIndex = String(zIndex);
-      el.style.pointerEvents = absD > 2.6 ? 'none' : 'auto';
+      el.style.pointerEvents = edgeDist > 2 ? 'none' : 'auto';
     }
   }, [images, baseCenters, cardSizes, maxSnapIndex]);
 
@@ -574,7 +577,7 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
 
   useEffect(() => {
     const el = stageRef.current;
-    if (!el || images.length <= 1) return;
+    if (!el || maxSnapIndex <= 0) return;
 
     const onWheel = (e: WheelEvent) => {
       const multiplier = e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? 320 : 1;
@@ -737,7 +740,8 @@ export const ImageMarqueeSection: React.FC<ImageMarqueeSectionProps> = ({
           >
             {images.map((img, idx) => {
               const dims = cardSizes[idx] || { width: 320, height: 240 };
-              const isCentered = idx === activeIndex;
+              const isCentered =
+                idx === activeIndex || (images.length >= 2 && idx === activeIndex + 1);
               const isTitleVisible = isCentered && showTitlesOnScroll && isStageInView;
 
               return (

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Upload } from 'lucide-react';
+import { Trash2, Upload } from 'lucide-react';
 import { GalleryVideo } from '../types/video';
 
 interface TigerCarousel3DProps {
@@ -7,6 +7,7 @@ interface TigerCarousel3DProps {
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
   onFilesSelected: (files: FileList | File[]) => void;
+  onDeleteVideo: (id: string) => void;
   isPlaying: boolean;
   isMuted: boolean;
   audioUnlocked: boolean;
@@ -53,6 +54,7 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
   activeIndex,
   onActiveIndexChange,
   onFilesSelected,
+  onDeleteVideo,
   isPlaying,
   isMuted,
   audioUnlocked,
@@ -140,19 +142,19 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
   const bounds = useMemo(() => {
     if (stageWidth < 640) {
       return {
-        maxWidth: Math.max(240, stageWidth - 48),
-        maxHeight: 380,
+        maxWidth: Math.min(300, stageWidth - 72),
+        maxHeight: 340,
       };
     }
     if (stageWidth < 1024) {
       return {
-        maxWidth: Math.min(640, stageWidth * 0.78),
-        maxHeight: 450,
+        maxWidth: Math.min(560, stageWidth * 0.72),
+        maxHeight: 420,
       };
     }
     return {
-      maxWidth: Math.min(860, stageWidth * 0.68),
-      maxHeight: 520,
+      maxWidth: Math.min(780, stageWidth * 0.68),
+      maxHeight: 480,
     };
   }, [stageWidth]);
 
@@ -163,14 +165,18 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
   const baseCenters = useMemo(() => {
     if (cardSizes.length === 0) return [];
     const centers: number[] = [0];
-    const baseGap = stageWidth < 640 ? 22 : 40;
+    const baseGap = stageWidth < 640 ? 22 : 44;
     for (let i = 1; i < cardSizes.length; i++) {
-      const prevHalf = cardSizes[i - 1].width * 0.43;
-      const currHalf = cardSizes[i].width * 0.43;
+      const prevHalf = cardSizes[i - 1].width * 0.5;
+      const currHalf = cardSizes[i].width * 0.5;
       centers.push(centers[i - 1] + prevHalf + currHalf + baseGap);
     }
     return centers;
   }, [cardSizes, stageWidth]);
+
+  const maxSnapIndex = useMemo(() => {
+    return Math.max(0, videos.length - 1);
+  }, [videos.length]);
 
   const dynamicStageHeight = useMemo(() => {
     if (videos.length === 0) {
@@ -178,17 +184,17 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
     }
     const clampedIdx = Math.max(0, Math.min(videos.length - 1, activeIndex));
     const activeSize = cardSizes[clampedIdx];
-    const verticalPad = stageWidth < 640 ? 48 : 68;
-    return Math.max(300, (activeSize?.height ?? 400) + verticalPad);
+    const verticalPad = stageWidth < 640 ? 52 : 76;
+    return Math.max(320, (activeSize?.height ?? 420) + verticalPad);
   }, [videos.length, activeIndex, cardSizes, stageWidth]);
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;
     if (!dragStateRef.current.active) {
-      targetIndexRef.current = activeIndex;
+      targetIndexRef.current = Math.max(0, Math.min(maxSnapIndex, activeIndex));
       wakeLoopRef.current();
     }
-  }, [activeIndex]);
+  }, [activeIndex, maxSnapIndex]);
 
   useEffect(() => {
     if (videos.length === 0) {
@@ -196,28 +202,27 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
       targetIndexRef.current = 0;
       return;
     }
-    const maxIdx = videos.length - 1;
-    virtualIndexRef.current = Math.max(0, Math.min(maxIdx, virtualIndexRef.current));
-    targetIndexRef.current = Math.max(0, Math.min(maxIdx, targetIndexRef.current));
-  }, [videos.length]);
+    virtualIndexRef.current = Math.max(0, Math.min(maxSnapIndex, virtualIndexRef.current));
+    targetIndexRef.current = Math.max(0, Math.min(maxSnapIndex, targetIndexRef.current));
+  }, [videos.length, maxSnapIndex]);
 
   const paintTransforms = useCallback(() => {
     const count = videos.length;
     if (count === 0 || baseCenters.length !== count) return;
 
     const vIdx = virtualIndexRef.current;
-    const clampedVIdx = Math.max(0, Math.min(count - 1, vIdx));
-    const lowIdx = Math.floor(clampedVIdx);
+    const clampedV = Math.max(0, Math.min(count - 1, vIdx));
+    const lowIdx = Math.floor(clampedV);
     const highIdx = Math.min(count - 1, lowIdx + 1);
-    const frac = clampedVIdx - lowIdx;
+    const frac = clampedV - lowIdx;
 
     let focalCenter =
       baseCenters[lowIdx] + (baseCenters[highIdx] - baseCenters[lowIdx]) * frac;
 
     if (vIdx < 0) {
-      focalCenter += vIdx * (cardSizes[0]?.width ?? 300) * 0.5;
+      focalCenter += vIdx * (cardSizes[0]?.width ?? 320) * 0.5;
     } else if (vIdx > count - 1) {
-      focalCenter += (vIdx - (count - 1)) * (cardSizes[count - 1]?.width ?? 300) * 0.5;
+      focalCenter += (vIdx - (count - 1)) * (cardSizes[count - 1]?.width ?? 320) * 0.5;
     }
 
     const reducedMotion = reducedMotionRef.current;
@@ -230,18 +235,18 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
       const d = i - vIdx;
       const absD = Math.abs(d);
       const tx = baseCenters[i] - focalCenter;
-      const tz = reducedMotion ? -absD * 60 : -Math.min(480, absD * 175);
-      const rotateY = reducedMotion ? 0 : Math.max(-52, Math.min(52, -d * 30));
-      const scale = Math.max(0.72, 1 - absD * 0.11);
-      const opacity = absD > 3.2 ? 0 : Math.max(0, 1 - Math.max(0, absD - 0.1) * 0.34);
-      const zIndex = 100 - Math.round(absD * 12);
+      const tz = reducedMotion ? -absD * 60 : -Math.min(480, absD * 195);
+      const rotateY = reducedMotion ? 0 : Math.max(-50, Math.min(50, -d * 25));
+      const scale = Math.max(0.7, 1 - absD * 0.13);
+      const opacity = absD > 2.4 ? 0 : Math.max(0, 1 - absD * 0.34);
+      const zIndex = 100 - Math.round(absD * 14);
 
       el.style.transform = `translate3d(calc(-50% + ${tx.toFixed(2)}px), -50%, ${tz.toFixed(
         2
       )}px) rotateY(${rotateY.toFixed(2)}deg) scale(${scale.toFixed(4)})`;
       el.style.opacity = opacity.toFixed(3);
       el.style.zIndex = String(zIndex);
-      el.style.pointerEvents = absD > 2.6 ? 'none' : 'auto';
+      el.style.pointerEvents = absD > 2 ? 'none' : 'auto';
     }
   }, [videos, baseCenters, cardSizes]);
 
@@ -266,7 +271,7 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
 
       const nearest = Math.max(
         0,
-        Math.min(videos.length - 1, Math.round(virtualIndexRef.current))
+        Math.min(maxSnapIndex, Math.round(virtualIndexRef.current))
       );
       if (nearest !== activeIndexRef.current) {
         activeIndexRef.current = nearest;
@@ -299,15 +304,16 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
         rafRef.current = null;
       }
     };
-  }, [videos.length, paintTransforms, onActiveIndexChange]);
+  }, [videos.length, maxSnapIndex, paintTransforms, onActiveIndexChange]);
 
-  // Playback & audio synchronization
+  // Playback & audio synchronization (only centered active video plays)
   useEffect(() => {
     videos.forEach((v, idx) => {
       const videoEl = videoRefs.current.get(v.id);
       if (!videoEl) return;
 
-      const shouldPlay = idx === activeIndex && isPlaying;
+      const isCenter = idx === activeIndex;
+      const shouldPlay = isCenter && isPlaying;
       const shouldMute = isMuted || !audioUnlocked || !shouldPlay;
       videoEl.muted = shouldMute;
       videoEl.volume = 1;
@@ -333,6 +339,7 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (videos.length === 0) return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if ((e.target as HTMLElement).closest('[data-delete-btn="true"]')) return;
 
     onFocusSection();
 
@@ -387,12 +394,11 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
     const indexDelta = -dx / approxSpacing;
 
     let nextVirtual = virtualIndexRef.current + indexDelta;
-    const maxIdx = videos.length - 1;
 
     if (nextVirtual < 0) {
       nextVirtual = nextVirtual * 0.35;
-    } else if (nextVirtual > maxIdx) {
-      nextVirtual = maxIdx + (nextVirtual - maxIdx) * 0.35;
+    } else if (nextVirtual > maxSnapIndex) {
+      nextVirtual = maxSnapIndex + (nextVirtual - maxSnapIndex) * 0.35;
     }
 
     virtualIndexRef.current = nextVirtual;
@@ -416,7 +422,6 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
     }
 
     if (videos.length === 0) return;
-    const maxIdx = videos.length - 1;
 
     // Only treat as a click/tap if neither X nor Y moved significantly
     if (!wasCaptured && drag.totalTravelX < 7 && drag.totalTravelY < 7) {
@@ -424,8 +429,9 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
         if (drag.targetCardIndex === activeIndexRef.current) {
           onTogglePlay();
         } else {
-          targetIndexRef.current = drag.targetCardIndex;
+          targetIndexRef.current = Math.max(0, Math.min(maxSnapIndex, drag.targetCardIndex));
           onActiveIndexChange(drag.targetCardIndex);
+          wakeLoopRef.current();
         }
       }
       return;
@@ -434,7 +440,7 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
     if (wasCaptured) {
       const momentum = Math.max(-1.6, Math.min(1.6, drag.velocity * 4.5));
       const projected = Math.round(virtualIndexRef.current + momentum);
-      const snapped = Math.max(0, Math.min(maxIdx, projected));
+      const snapped = Math.max(0, Math.min(maxSnapIndex, projected));
 
       targetIndexRef.current = snapped;
       onActiveIndexChange(snapped);
@@ -457,7 +463,7 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
     }
 
     if (videos.length > 0) {
-      const snapped = Math.max(0, Math.min(videos.length - 1, Math.round(virtualIndexRef.current)));
+      const snapped = Math.max(0, Math.min(maxSnapIndex, Math.round(virtualIndexRef.current)));
       targetIndexRef.current = snapped;
       wakeLoopRef.current();
     }
@@ -465,9 +471,8 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
 
   useEffect(() => {
     const el = stageRef.current;
-    if (!el || videos.length <= 1) return;
+    if (!el || maxSnapIndex <= 0) return;
 
-    const maxIdx = videos.length - 1;
     const onWheel = (e: WheelEvent) => {
       const multiplier = e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? 320 : 1;
       const dx = e.deltaX * multiplier;
@@ -479,7 +484,7 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
       const currentTarget = targetIndexRef.current;
       const movingForward = rawDelta > 0;
       const atBoundary =
-        (movingForward && currentTarget >= maxIdx) ||
+        (movingForward && currentTarget >= maxSnapIndex) ||
         (!movingForward && currentTarget <= 0);
 
       if (!isHorizontalIntent && atBoundary) {
@@ -497,12 +502,12 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
       if (Math.abs(wheelAccumRef.current) >= threshold) {
         const step = wheelAccumRef.current > 0 ? 1 : -1;
         wheelAccumRef.current = 0;
-        const next = Math.max(0, Math.min(maxIdx, targetIndexRef.current + step));
+        const next = Math.max(0, Math.min(maxSnapIndex, targetIndexRef.current + step));
         if (next !== targetIndexRef.current) {
           targetIndexRef.current = next;
           onActiveIndexChange(next);
           wakeLoopRef.current();
-          if (next === 0 || next === maxIdx) {
+          if (next === 0 || next === maxSnapIndex) {
             boundaryTimeRef.current = performance.now();
           }
         }
@@ -523,20 +528,20 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
         window.clearTimeout(wheelTimeoutRef.current);
       }
     };
-  }, [videos.length, onActiveIndexChange, onFocusSection]);
+  }, [maxSnapIndex, onActiveIndexChange, onFocusSection]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (videos.length === 0) return;
     onFocusSection();
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      const next = Math.min(videos.length - 1, activeIndex + 1);
+      const next = Math.min(maxSnapIndex, Math.min(maxSnapIndex, activeIndex) + 1);
       targetIndexRef.current = next;
       onActiveIndexChange(next);
       wakeLoopRef.current();
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      const prev = Math.max(0, activeIndex - 1);
+      const prev = Math.max(0, Math.min(maxSnapIndex, activeIndex) - 1);
       targetIndexRef.current = prev;
       onActiveIndexChange(prev);
       wakeLoopRef.current();
@@ -641,9 +646,9 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
                   transformStyle: 'preserve-3d',
                   willChange: 'transform, opacity',
                 }}
-                className={`absolute overflow-hidden rounded-xl bg-black transition-shadow duration-200 ${
+                className={`group absolute overflow-hidden rounded-xl bg-black transition-shadow duration-200 ${
                   isCenter
-                    ? 'shadow-[0_28px_70px_-16px_rgba(0,0,0,0.85),0_0_45px_-12px_rgba(234,88,12,0.35)]'
+                    ? 'shadow-[0_28px_70px_-16px_rgba(0,0,0,0.85),0_0_45px_-12px_rgba(234,88,12,0.42)]'
                     : 'shadow-[0_20px_50px_-15px_rgba(0,0,0,0.8)]'
                 }`}
               >
@@ -663,6 +668,25 @@ export const TigerCarousel3D: React.FC<TigerCarousel3DProps> = ({
                   draggable={false}
                   className="pointer-events-none block h-full w-full object-contain bg-black"
                 />
+
+                <button
+                  type="button"
+                  data-delete-btn="true"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteVideo(video.id);
+                  }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  aria-label={`Delete ${video.name}`}
+                  title="Delete showreel"
+                  className={`absolute top-3 right-3 z-20 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-all duration-150 hover:border-red-500/70 hover:bg-red-600/90 hover:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer ${
+                    isCenter
+                      ? 'opacity-85 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100'
+                      : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                  }`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
             );
           })}

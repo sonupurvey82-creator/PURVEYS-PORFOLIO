@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { GalleryVideo } from '../types/video';
 import { formatDuration } from '../utils/videoStorage';
 
 interface VideoLightboxProps {
   video: GalleryVideo | null;
   onClose: () => void;
+  onDelete?: () => void;
   onPrev: () => void;
   onNext: () => void;
   hasPrev: boolean;
@@ -15,6 +16,7 @@ interface VideoLightboxProps {
 export const VideoLightbox: React.FC<VideoLightboxProps> = ({
   video,
   onClose,
+  onDelete,
   onPrev,
   onNext,
   hasPrev,
@@ -47,14 +49,27 @@ export const VideoLightbox: React.FC<VideoLightboxProps> = ({
             {video.ratioLabel} · {video.width}×{video.height} · {formatDuration(video.duration)}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close fullscreen preview"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/15 bg-[#16110E] text-[#FAF6F0] transition-colors hover:border-[#F97316]/60 hover:text-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer shrink-0"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              aria-label={`Delete ${video.name}`}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-red-500/35 bg-red-500/10 px-3.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close fullscreen preview"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/15 bg-[#16110E] text-[#FAF6F0] transition-colors hover:border-[#F97316]/60 hover:text-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer shrink-0"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       <div className="relative flex flex-1 items-center justify-center p-4 sm:p-8 overflow-hidden">

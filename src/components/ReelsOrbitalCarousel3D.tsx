@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Upload } from 'lucide-react';
+import { Trash2, Upload } from 'lucide-react';
 import { GalleryVideo } from '../types/video';
 
 interface ReelsOrbitalCarousel3DProps {
@@ -7,6 +7,7 @@ interface ReelsOrbitalCarousel3DProps {
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
   onFilesSelected: (files: FileList | File[]) => void;
+  onDeleteVideo: (id: string) => void;
   isPlaying: boolean;
   isMuted: boolean;
   audioUnlocked: boolean;
@@ -53,6 +54,7 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
   activeIndex,
   onActiveIndexChange,
   onFilesSelected,
+  onDeleteVideo,
   isPlaying,
   isMuted,
   audioUnlocked,
@@ -140,13 +142,13 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
   const bounds = useMemo(() => {
     if (stageWidth < 460) {
       return {
-        maxWidth: Math.max(200, stageWidth * 0.72),
-        maxHeight: 360,
+        maxWidth: Math.min(240, stageWidth - 76),
+        maxHeight: 340,
       };
     }
     return {
-      maxWidth: Math.min(480, stageWidth * 0.68),
-      maxHeight: 460,
+      maxWidth: Math.min(340, stageWidth * 0.56),
+      maxHeight: 420,
     };
   }, [stageWidth]);
 
@@ -154,22 +156,38 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
     return videos.map((v) => computeCardSize(v.aspectRatio, bounds.maxWidth, bounds.maxHeight));
   }, [videos, bounds]);
 
+  const baseCenters = useMemo(() => {
+    if (cardSizes.length === 0) return [];
+    const centers: number[] = [0];
+    const baseGap = stageWidth < 460 ? 18 : 30;
+    for (let i = 1; i < cardSizes.length; i++) {
+      const prevHalf = cardSizes[i - 1].width * 0.5;
+      const currHalf = cardSizes[i].width * 0.5;
+      centers.push(centers[i - 1] + prevHalf + currHalf + baseGap);
+    }
+    return centers;
+  }, [cardSizes, stageWidth]);
+
+  const maxSnapIndex = useMemo(() => {
+    return Math.max(0, videos.length - 1);
+  }, [videos.length]);
+
   const dynamicStageHeight = useMemo(() => {
     if (videos.length === 0) {
       return stageWidth < 460 ? 320 : 400;
     }
     const clampedIdx = Math.max(0, Math.min(videos.length - 1, activeIndex));
     const activeSize = cardSizes[clampedIdx];
-    return Math.max(280, (activeSize?.height ?? 380) + 76);
+    return Math.max(320, (activeSize?.height ?? 380) + 84);
   }, [videos.length, activeIndex, cardSizes, stageWidth]);
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;
     if (!dragStateRef.current.active) {
-      targetIndexRef.current = activeIndex;
+      targetIndexRef.current = Math.max(0, Math.min(maxSnapIndex, activeIndex));
       wakeLoopRef.current();
     }
-  }, [activeIndex]);
+  }, [activeIndex, maxSnapIndex]);
 
   useEffect(() => {
     if (videos.length === 0) {
@@ -177,17 +195,29 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
       targetIndexRef.current = 0;
       return;
     }
-    const maxIdx = videos.length - 1;
-    virtualIndexRef.current = Math.max(0, Math.min(maxIdx, virtualIndexRef.current));
-    targetIndexRef.current = Math.max(0, Math.min(maxIdx, targetIndexRef.current));
-  }, [videos.length]);
+    virtualIndexRef.current = Math.max(0, Math.min(maxSnapIndex, virtualIndexRef.current));
+    targetIndexRef.current = Math.max(0, Math.min(maxSnapIndex, targetIndexRef.current));
+  }, [videos.length, maxSnapIndex]);
 
   const paintTransforms = useCallback(() => {
     const count = videos.length;
-    if (count === 0) return;
+    if (count === 0 || baseCenters.length !== count) return;
 
     const vIdx = virtualIndexRef.current;
-    const radiusX = Math.max(120, Math.min(240, stageWidth * 0.34));
+    const clampedV = Math.max(0, Math.min(count - 1, vIdx));
+    const lowIdx = Math.floor(clampedV);
+    const highIdx = Math.min(count - 1, lowIdx + 1);
+    const frac = clampedV - lowIdx;
+
+    let focalCenter =
+      baseCenters[lowIdx] + (baseCenters[highIdx] - baseCenters[lowIdx]) * frac;
+
+    if (vIdx < 0) {
+      focalCenter += vIdx * (cardSizes[0]?.width ?? 180) * 0.5;
+    } else if (vIdx > count - 1) {
+      focalCenter += (vIdx - (count - 1)) * (cardSizes[count - 1]?.width ?? 180) * 0.5;
+    }
+
     const reducedMotion = reducedMotionRef.current;
 
     for (let i = 0; i < count; i++) {
@@ -197,16 +227,15 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
 
       const d = i - vIdx;
       const absD = Math.abs(d);
-      const clampedAngle = Math.max(-2.1, Math.min(2.1, d * 0.68));
 
-      const tx = Math.sin(clampedAngle) * radiusX;
-      const ty = reducedMotion ? 0 : Math.min(48, absD * 14);
-      const tz = reducedMotion ? -absD * 50 : (Math.cos(clampedAngle) - 1) * 260 - absD * 36;
-      const rotateZ = reducedMotion ? 0 : Math.max(-18, Math.min(18, d * 6.5));
-      const rotateX = reducedMotion ? 0 : -Math.min(18, absD * 6);
-      const rotateY = reducedMotion ? 0 : Math.max(-28, Math.min(28, -d * 14));
-      const scale = Math.max(0.68, 1 - absD * 0.12);
-      const opacity = absD > 2.9 ? 0 : Math.max(0, 1 - Math.max(0, absD - 0.1) * 0.34);
+      const tx = baseCenters[i] - focalCenter;
+      const ty = reducedMotion ? 0 : Math.min(48, absD * 16);
+      const tz = reducedMotion ? -absD * 50 : -Math.min(440, absD * 185);
+      const rotateZ = reducedMotion ? 0 : Math.max(-16, Math.min(16, d * 6.5));
+      const rotateX = reducedMotion ? 0 : -Math.min(18, absD * 7);
+      const rotateY = reducedMotion ? 0 : Math.max(-28, Math.min(28, -d * 16));
+      const scale = Math.max(0.68, 1 - absD * 0.14);
+      const opacity = absD > 2.3 ? 0 : Math.max(0, 1 - absD * 0.36);
       const zIndex = 100 - Math.round(absD * 14);
 
       el.style.transform = `translate3d(calc(-50% + ${tx.toFixed(2)}px), calc(-50% + ${ty.toFixed(
@@ -216,9 +245,9 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
       )}deg) rotateZ(${rotateZ.toFixed(2)}deg) scale(${scale.toFixed(4)})`;
       el.style.opacity = opacity.toFixed(3);
       el.style.zIndex = String(zIndex);
-      el.style.pointerEvents = absD > 2.4 ? 'none' : 'auto';
+      el.style.pointerEvents = absD > 1.9 ? 'none' : 'auto';
     }
-  }, [videos, stageWidth]);
+  }, [videos, baseCenters, cardSizes]);
 
   useEffect(() => {
     if (videos.length === 0) return;
@@ -241,7 +270,7 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
 
       const nearest = Math.max(
         0,
-        Math.min(videos.length - 1, Math.round(virtualIndexRef.current))
+        Math.min(maxSnapIndex, Math.round(virtualIndexRef.current))
       );
       if (nearest !== activeIndexRef.current) {
         activeIndexRef.current = nearest;
@@ -274,14 +303,15 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
         rafRef.current = null;
       }
     };
-  }, [videos.length, paintTransforms, onActiveIndexChange]);
+  }, [videos.length, maxSnapIndex, paintTransforms, onActiveIndexChange]);
 
   useEffect(() => {
     videos.forEach((v, idx) => {
       const videoEl = videoRefs.current.get(v.id);
       if (!videoEl) return;
 
-      const shouldPlay = idx === activeIndex && isPlaying;
+      const isCenter = idx === activeIndex;
+      const shouldPlay = isCenter && isPlaying;
       const shouldMute = isMuted || !audioUnlocked || !shouldPlay;
       videoEl.muted = shouldMute;
       videoEl.volume = 1;
@@ -307,6 +337,7 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (videos.length === 0) return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if ((e.target as HTMLElement).closest('[data-delete-btn="true"]')) return;
 
     onFocusSection();
 
@@ -360,12 +391,11 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
     const indexDelta = -dx / approxSpacing;
 
     let nextVirtual = virtualIndexRef.current + indexDelta;
-    const maxIdx = videos.length - 1;
 
     if (nextVirtual < 0) {
       nextVirtual = nextVirtual * 0.35;
-    } else if (nextVirtual > maxIdx) {
-      nextVirtual = maxIdx + (nextVirtual - maxIdx) * 0.35;
+    } else if (nextVirtual > maxSnapIndex) {
+      nextVirtual = maxSnapIndex + (nextVirtual - maxSnapIndex) * 0.35;
     }
 
     virtualIndexRef.current = nextVirtual;
@@ -389,15 +419,15 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
     }
 
     if (videos.length === 0) return;
-    const maxIdx = videos.length - 1;
 
     if (!wasCaptured && drag.totalTravelX < 7 && drag.totalTravelY < 7) {
       if (drag.targetCardIndex !== null) {
         if (drag.targetCardIndex === activeIndexRef.current) {
           onTogglePlay();
         } else {
-          targetIndexRef.current = drag.targetCardIndex;
+          targetIndexRef.current = Math.max(0, Math.min(maxSnapIndex, drag.targetCardIndex));
           onActiveIndexChange(drag.targetCardIndex);
+          wakeLoopRef.current();
         }
       }
       return;
@@ -406,7 +436,7 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
     if (wasCaptured) {
       const momentum = Math.max(-1.6, Math.min(1.6, drag.velocity * 4.5));
       const projected = Math.round(virtualIndexRef.current + momentum);
-      const snapped = Math.max(0, Math.min(maxIdx, projected));
+      const snapped = Math.max(0, Math.min(maxSnapIndex, projected));
 
       targetIndexRef.current = snapped;
       onActiveIndexChange(snapped);
@@ -429,7 +459,7 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
     }
 
     if (videos.length > 0) {
-      const snapped = Math.max(0, Math.min(videos.length - 1, Math.round(virtualIndexRef.current)));
+      const snapped = Math.max(0, Math.min(maxSnapIndex, Math.round(virtualIndexRef.current)));
       targetIndexRef.current = snapped;
       wakeLoopRef.current();
     }
@@ -437,9 +467,8 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
 
   useEffect(() => {
     const el = stageRef.current;
-    if (!el || videos.length <= 1) return;
+    if (!el || maxSnapIndex <= 0) return;
 
-    const maxIdx = videos.length - 1;
     const onWheel = (e: WheelEvent) => {
       const multiplier = e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? 320 : 1;
       const dx = e.deltaX * multiplier;
@@ -451,7 +480,7 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
       const currentTarget = targetIndexRef.current;
       const movingForward = rawDelta > 0;
       const atBoundary =
-        (movingForward && currentTarget >= maxIdx) ||
+        (movingForward && currentTarget >= maxSnapIndex) ||
         (!movingForward && currentTarget <= 0);
 
       if (!isHorizontalIntent && atBoundary) {
@@ -469,12 +498,12 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
       if (Math.abs(wheelAccumRef.current) >= threshold) {
         const step = wheelAccumRef.current > 0 ? 1 : -1;
         wheelAccumRef.current = 0;
-        const next = Math.max(0, Math.min(maxIdx, targetIndexRef.current + step));
+        const next = Math.max(0, Math.min(maxSnapIndex, targetIndexRef.current + step));
         if (next !== targetIndexRef.current) {
           targetIndexRef.current = next;
           onActiveIndexChange(next);
           wakeLoopRef.current();
-          if (next === 0 || next === maxIdx) {
+          if (next === 0 || next === maxSnapIndex) {
             boundaryTimeRef.current = performance.now();
           }
         }
@@ -495,20 +524,20 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
         window.clearTimeout(wheelTimeoutRef.current);
       }
     };
-  }, [videos.length, onActiveIndexChange, onFocusSection]);
+  }, [maxSnapIndex, onActiveIndexChange, onFocusSection]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (videos.length === 0) return;
     onFocusSection();
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      const next = Math.min(videos.length - 1, activeIndex + 1);
+      const next = Math.min(maxSnapIndex, Math.min(maxSnapIndex, activeIndex) + 1);
       targetIndexRef.current = next;
       onActiveIndexChange(next);
       wakeLoopRef.current();
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      const prev = Math.max(0, activeIndex - 1);
+      const prev = Math.max(0, Math.min(maxSnapIndex, activeIndex) - 1);
       targetIndexRef.current = prev;
       onActiveIndexChange(prev);
       wakeLoopRef.current();
@@ -585,7 +614,7 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
           }}
         >
           {videos.map((video, idx) => {
-            const dims = cardSizes[idx] || { width: 280, height: 380 };
+            const dims = cardSizes[idx] || { width: 240, height: 340 };
             const isCenter = idx === activeIndex;
 
             return (
@@ -610,9 +639,9 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
                   transformStyle: 'preserve-3d',
                   willChange: 'transform, opacity',
                 }}
-                className={`absolute overflow-hidden rounded-xl bg-black transition-shadow duration-200 ${
+                className={`group absolute overflow-hidden rounded-xl bg-black transition-shadow duration-200 ${
                   isCenter
-                    ? 'shadow-[0_28px_70px_-16px_rgba(0,0,0,0.88),0_0_42px_-12px_rgba(234,88,12,0.38)]'
+                    ? 'shadow-[0_28px_70px_-16px_rgba(0,0,0,0.88),0_0_42px_-12px_rgba(234,88,12,0.42)]'
                     : 'shadow-[0_18px_45px_-14px_rgba(0,0,0,0.8)]'
                 }`}
               >
@@ -632,6 +661,25 @@ export const ReelsOrbitalCarousel3D: React.FC<ReelsOrbitalCarousel3DProps> = ({
                   draggable={false}
                   className="pointer-events-none block h-full w-full object-contain bg-black"
                 />
+
+                <button
+                  type="button"
+                  data-delete-btn="true"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteVideo(video.id);
+                  }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  aria-label={`Delete ${video.name}`}
+                  title="Delete reel or edit"
+                  className={`absolute top-2.5 right-2.5 z-20 inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/20 bg-black/80 text-[#FAF6F0] backdrop-blur-sm transition-all duration-150 hover:border-red-500/70 hover:bg-red-600/90 hover:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer ${
+                    isCenter
+                      ? 'opacity-85 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100'
+                      : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                  }`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
               </div>
             );
           })}

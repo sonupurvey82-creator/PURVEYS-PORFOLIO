@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
 
 interface NavbarProps {
-  onTriggerUpload: () => void;
-  isProcessing: boolean;
+  onNavigateHome?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onTriggerUpload, isProcessing }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onNavigateHome }) => {
   const [isHidden, setIsHidden] = useState<boolean>(false);
+  const [now, setNow] = useState<Date>(() => new Date());
 
   useEffect(() => {
     let ticking = false;
@@ -30,6 +29,25 @@ export const Navbar: React.FC<NavbarProps> = ({ onTriggerUpload, isProcessing })
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const formattedTime = now.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  const formattedDate = now.toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+
   return (
     <header
       aria-hidden={isHidden}
@@ -43,6 +61,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onTriggerUpload, isProcessing })
         <a
           href="#top"
           tabIndex={isHidden ? -1 : undefined}
+          onClick={(e) => {
+            if (onNavigateHome) {
+              e.preventDefault();
+              onNavigateHome();
+            }
+          }}
           className="inline-flex items-center gap-2.5 font-display text-lg font-bold tracking-[0.06em] text-[#FAF6F0] whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] rounded"
         >
           <span className="h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-white/20 bg-[#1B130E] shadow-sm sm:h-10 sm:w-10">
@@ -56,16 +80,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onTriggerUpload, isProcessing })
           <span>PURVEY</span>
         </a>
 
-        <button
-          type="button"
-          onClick={onTriggerUpload}
-          disabled={isProcessing}
-          tabIndex={isHidden ? -1 : undefined}
-          className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#EA580C] px-4 text-xs font-semibold text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#06150B] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+        {/* Live Clock in the Top Bar */}
+        <div
+          aria-label={`Current time ${formattedTime}, ${formattedDate}`}
+          className="flex flex-col items-end text-right leading-tight select-none shrink-0"
         >
-          <Plus className="h-4 w-4" />
-          <span>{isProcessing ? 'Adding...' : 'Upload Videos'}</span>
-        </button>
+          <span className="font-mono text-sm font-semibold tracking-tight text-[#FAF6F0] tabular-nums sm:text-base">
+            {formattedTime}
+          </span>
+          <span className="text-[11px] font-medium text-[#B6A99A] whitespace-nowrap">
+            {formattedDate}
+          </span>
+        </div>
       </div>
     </header>
   );

@@ -10,12 +10,15 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import presetsCardImg from '../assets/images/extra_services_presets_card_1795511333705.jpg';
 import { ExtraService, ServiceWorkMediaKind } from '../types/service';
 import { isImageFile } from '../utils/imageStorage';
 import { isVideoFile } from '../utils/videoStorage';
 
 interface ExtraServicesSectionProps {
   services: ExtraService[];
+  presetsCount: number;
+  onOpenPresets: () => void;
   onSaveService: (payload: {
     id?: string;
     title: string;
@@ -28,9 +31,12 @@ interface ExtraServicesSectionProps {
 
 export const ExtraServicesSection: React.FC<ExtraServicesSectionProps> = ({
   services,
+  presetsCount,
+  onOpenPresets,
   onSaveService,
   onDeleteService,
 }) => {
+  const [presetsImageFailed, setPresetsImageFailed] = useState<boolean>(false);
   const [formOpen, setFormOpen] = useState<boolean>(false);
   const [editingService, setEditingService] = useState<ExtraService | null>(null);
   const [inspectingService, setInspectingService] = useState<ExtraService | null>(null);
@@ -204,23 +210,48 @@ export const ExtraServicesSection: React.FC<ExtraServicesSectionProps> = ({
         </button>
       </div>
 
-      {services.length === 0 ? (
-        <div className="flex min-h-[140px] w-full flex-col items-center justify-center px-4 py-6 text-center">
-          <p className="max-w-md text-sm leading-relaxed text-[#B6A99A]">
-            Add the extra services you provide along with your work details and optional sample images or clips.
-          </p>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {/* Built-in PRESETS Image Card — clicking opens the dedicated Presets Upload & Download page */}
+        <article className="group relative h-60 overflow-hidden rounded-2xl border border-[#F97316]/30 bg-[#08150D] shadow-[0_14px_34px_-12px_rgba(0,0,0,0.65)] transition-[transform,border-color] duration-200 hover:-translate-y-0.5 hover:border-[#FF6B00]/80 sm:h-64">
           <button
             type="button"
-            onClick={openAddModal}
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#EA580C] px-4 py-2.5 text-xs font-semibold text-[#FFF7ED] transition-colors duration-150 hover:bg-[#F97316] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0908] whitespace-nowrap shrink-0 cursor-pointer"
+            onClick={onOpenPresets}
+            aria-label="Open Presets page to upload and download presets"
+            className="relative block h-full w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] cursor-pointer"
           >
-            <Plus className="h-4 w-4" />
-            <span>Add Extra Service</span>
+            {presetsImageFailed ? (
+              <div className="tiger-stripe-hairline flex h-full w-full items-center justify-center bg-gradient-to-br from-[#0B2214] via-[#07150C] to-[#1D120A]">
+                <span className="font-display text-4xl font-extrabold tracking-[0.12em] text-[#FDBA74] sm:text-5xl">
+                  PRESETS
+                </span>
+              </div>
+            ) : (
+              <img
+                src={presetsCardImg}
+                alt="PRESETS"
+                referrerPolicy="no-referrer"
+                onError={() => setPresetsImageFailed(true)}
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+            )}
+
+            {/* Hover Scrim & Revealed Details (hidden until mouse cursor hovers) */}
+            <div className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/92 via-black/70 to-black/20 p-5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+              <div className="translate-y-3 transition-transform duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-y-0 group-focus-within:translate-y-0">
+                <h3 className="font-display text-lg font-semibold tracking-tight text-[#FAF6F0] sm:text-xl">
+                  Presets Library
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-[#E4DCD2]">
+                  {presetsCount > 0
+                    ? `Browse and download ${presetsCount} ${presetsCount === 1 ? 'preset' : 'presets'} or upload new packs.`
+                    : 'Open the Presets page to upload your presets for visitors to download.'}
+                </p>
+              </div>
+            </div>
           </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {services.map((service) => (
+        </article>
+
+        {services.map((service) => (
             <article
               key={service.id}
               className="group relative h-60 overflow-hidden rounded-2xl border border-white/15 bg-[#08150D] shadow-[0_14px_34px_-12px_rgba(0,0,0,0.65)] transition-[transform,border-color] duration-200 hover:-translate-y-0.5 hover:border-[#FF6B00]/55 sm:h-64"
@@ -293,8 +324,7 @@ export const ExtraServicesSection: React.FC<ExtraServicesSectionProps> = ({
               </button>
             </article>
           ))}
-        </div>
-      )}
+      </div>
 
       {/* Inspect Service & Work Modal */}
       {inspectingService &&

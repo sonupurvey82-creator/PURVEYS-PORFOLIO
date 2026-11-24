@@ -9,6 +9,7 @@ import { ImageMarqueeSection } from './components/ImageMarqueeSection';
 import { LivingForestBackground } from './components/LivingForestBackground';
 import { Navbar } from './components/Navbar';
 import { ParallaxLayer } from './components/ParallaxLayer';
+import { PresetsPage } from './components/PresetsPage';
 import { ReelsOrbitalCarousel3D } from './components/ReelsOrbitalCarousel3D';
 import { SocialLinks } from './components/SocialLinks';
 import { TigerCarousel3D } from './components/TigerCarousel3D';
@@ -17,6 +18,7 @@ import { WelcomeAirshipBanner } from './components/WelcomeAirshipBanner';
 import { YouTubeChannelsSection } from './components/YouTubeChannelsSection';
 import { StoredChannelRecord, YouTubeChannel } from './types/channel';
 import { GalleryImage, StoredImageRecord } from './types/image';
+import { PresetCategory, PresetItem, PresetPreviewKind, StoredPresetRecord } from './types/preset';
 import { ExtraService, ServiceWorkMediaKind, StoredServiceRecord } from './types/service';
 import { GalleryVideo, StoredVideoRecord, VideoSection } from './types/video';
 import {
@@ -25,6 +27,15 @@ import {
   loadYouTubeChannels,
   saveYouTubeChannelRecord,
 } from './utils/channelStorage';
+import {
+  deletePresetRecord,
+  extractFileExtension,
+  getPresetRecord,
+  incrementPresetDownload,
+  inferPresetCategory,
+  loadPresets,
+  savePresetRecord,
+} from './utils/presetStorage';
 import {
   deleteExtraServiceRecord,
   getExtraServiceRecord,
@@ -40,6 +51,7 @@ import {
   updateImageRecordInfo,
 } from './utils/imageStorage';
 import {
+  deleteVideoRecord,
   extractVideoMetadata,
   isVideoFile,
   loadGalleryVideos,
@@ -51,7 +63,12 @@ export default function App() {
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [channels, setChannels] = useState<YouTubeChannel[]>([]);
   const [services, setServices] = useState<ExtraService[]>([]);
+  const [presets, setPresets] = useState<PresetItem[]>([]);
+  const [processingPresets, setProcessingPresets] = useState<boolean>(false);
   const [processingImages, setProcessingImages] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<'home' | 'presets'>(() =>
+    typeof window !== 'undefined' && window.location.hash === '#presets' ? 'presets' : 'home'
+  );
 
   // Upper "Showreels" state
   const [showreelIndex, setShowreelIndex] = useState<number>(0);
@@ -86,6 +103,32 @@ export default function App() {
   channelsRef.current = channels;
   const servicesRef = useRef<ExtraService[]>([]);
   servicesRef.current = services;
+  const presetsRef = useRef<PresetItem[]>([]);
+  presetsRef.current = presets;
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setCurrentPage(window.location.hash === '#presets' ? 'presets' : 'home');
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  const navigateToPresets = useCallback(() => {
+    if (window.location.hash !== '#presets') {
+      window.location.hash = 'presets';
+    }
+    setCurrentPage('presets');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, []);
+
+  const navigateToHome = useCallback(() => {
+    if (window.location.hash === '#presets') {
+      window.location.hash = 'top';
+    }
+    setCurrentPage('home');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, []);
 
   // Unlock unmuted audio on first user gesture anywhere on the page
   useEffect(() => {
@@ -103,6 +146,7 @@ export default function App() {
 
   // Observe section visibility so off-screen sections pause cleanly instead of playing audio invisibly
   useEffect(() => {
+    if (currentPage !== 'home') return;
     const showEl = showreelSectionRef.current;
     const reelsEl = reelsSectionRef.current;
     if (!showEl || !reelsEl || typeof IntersectionObserver === 'undefined') return;
@@ -134,7 +178,7 @@ export default function App() {
     observer.observe(showEl);
     observer.observe(reelsEl);
     return () => observer.disconnect();
-  }, []);
+  }, [currentPage]);
 
   useEffect(() => {
     let mounted = true;
@@ -143,7 +187,8 @@ export default function App() {
       loadGalleryImages(),
       loadYouTubeChannels(),
       loadExtraServices(),
-    ]).then(([loadedVideos, loadedImages, loadedChannels, loadedServices]) => {
+      loadPresets(),
+    ]).then(([loadedVideos, loadedImages, loadedChannels, loadedServices, loadedPresets]) => {
       if (!mounted) {
         loadedVideos.forEach((v) => URL.revokeObjectURL(v.objectUrl));
         loadedImages.forEach((img) => URL.revokeObjectURL(img.objectUrl));
@@ -153,12 +198,18 @@ export default function App() {
         loadedServices.forEach((srv) => {
           if (srv.mediaObjectUrl) URL.revokeObjectURL(srv.mediaObjectUrl);
         });
+        loadedPresets.forEach((preset) => {
+          URL.revokeObjectURL(preset.fileObjectUrl);
+          if (preset.previewObjectUrl) URL.revokeObjectURL(preset.previewObjectUrl);
+        });
         return;
       }
+
       setVideos(loadedVideos);
       setImages(loadedImages);
       setChannels(loadedChannels);
       setServices(loadedServices);
+      setPresets(loadedPresets);
       setIsHydrated(true);
     });
     return () => {
@@ -170,6 +221,10 @@ export default function App() {
       });
       servicesRef.current.forEach((srv) => {
         if (srv.mediaObjectUrl) URL.revokeObjectURL(srv.mediaObjectUrl);
+      });
+      presetsRef.current.forEach((preset) => {
+        URL.revokeObjectURL(preset.fileObjectUrl);
+        if (preset.previewObjectUrl) URL.revokeObjectURL(preset.previewObjectUrl);
       });
     };
   }, []);
@@ -300,6 +355,33 @@ export default function App() {
       e.target.value = '';
     }
   };
+
+  const handleDeleteVideo = useCallback(
+    async (id: string, section: VideoSection) => {
+      const target = videosRef.current.find((v) => v.id === id);
+      if (target) {
+        URL.revokeObjectURL(target.objectUrl);
+      }
+
+      const remainingCount = videosRef.current.filter(
+        (v) => v.section === section && v.id !== id
+      ).length;
+
+      await deleteVideoRecord(id);
+      setVideos((prev) => prev.filter((v) => v.id !== id));
+
+      if (section === 'showreels') {
+        setShowreelIndex((idx) => (remainingCount === 0 ? 0 : Math.min(idx, remainingCount - 1)));
+      } else {
+        setReelsIndex((idx) => (remainingCount === 0 ? 0 : Math.min(idx, remainingCount - 1)));
+      }
+
+      if (remainingCount === 0) {
+        setLightboxTarget((curr) => (curr === section ? null : curr));
+      }
+    },
+    []
+  );
 
   const handleImagesSelected = useCallback(async (fileList: FileList | File[]) => {
     const incoming = Array.from(fileList);
@@ -566,6 +648,194 @@ export default function App() {
     setServices((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
+  const handleQuickUploadPresets = useCallback(async (fileList: FileList | File[]) => {
+    const incoming = Array.from(fileList);
+    if (incoming.length === 0) return;
+
+    setProcessingPresets(true);
+    try {
+      const added: PresetItem[] = [];
+      for (let i = 0; i < incoming.length; i++) {
+        const file = incoming[i];
+        const id =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+        const title = file.name.replace(/\.[^/.]+$/, '') || 'Preset Pack';
+        const category = inferPresetCategory(file.name);
+        const fileExt = extractFileExtension(file.name);
+        const fileObjectUrl = URL.createObjectURL(file);
+        const createdAt = Date.now() + i;
+
+        const record: StoredPresetRecord = {
+          id,
+          title,
+          category,
+          description: '',
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type || 'application/octet-stream',
+          fileExt,
+          fileBlob: file,
+          downloads: 0,
+          createdAt,
+        };
+
+        await savePresetRecord(record);
+
+        added.push({
+          id: record.id,
+          title: record.title,
+          category: record.category,
+          description: record.description,
+          fileName: record.fileName,
+          fileSize: record.fileSize,
+          fileType: record.fileType,
+          fileExt: record.fileExt,
+          fileObjectUrl,
+          downloads: 0,
+          createdAt: record.createdAt,
+        });
+      }
+
+      setPresets((prev) => [...added.reverse(), ...prev]);
+    } finally {
+      setProcessingPresets(false);
+    }
+  }, []);
+
+  const handleSavePreset = useCallback(
+    async (payload: {
+      id?: string;
+      title: string;
+      category: PresetCategory;
+      description: string;
+      presetFile?: File | null;
+      previewFile?: File | null;
+      removeExistingPreview?: boolean;
+    }) => {
+      const existingItem = payload.id
+        ? presetsRef.current.find((p) => p.id === payload.id)
+        : undefined;
+      const existingRecord = payload.id ? await getPresetRecord(payload.id) : null;
+
+      if (!payload.presetFile && !existingRecord?.fileBlob) return;
+
+      const id =
+        payload.id ??
+        (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
+
+      let nextFileBlob: Blob = existingRecord!.fileBlob;
+      let nextFileName = existingRecord?.fileName ?? 'preset.bin';
+      let nextFileSize = existingRecord?.fileSize ?? 0;
+      let nextFileType = existingRecord?.fileType ?? 'application/octet-stream';
+      let nextFileExt = existingRecord?.fileExt ?? 'FILE';
+      let nextFileObjectUrl = existingItem?.fileObjectUrl ?? '';
+
+      if (payload.presetFile) {
+        if (existingItem?.fileObjectUrl) {
+          URL.revokeObjectURL(existingItem.fileObjectUrl);
+        }
+        nextFileBlob = payload.presetFile;
+        nextFileName = payload.presetFile.name;
+        nextFileSize = payload.presetFile.size;
+        nextFileType = payload.presetFile.type || 'application/octet-stream';
+        nextFileExt = extractFileExtension(payload.presetFile.name);
+        nextFileObjectUrl = URL.createObjectURL(payload.presetFile);
+      }
+
+      let nextPreviewBlob: Blob | undefined = existingRecord?.previewBlob;
+      let nextPreviewKind: PresetPreviewKind | undefined = existingRecord?.previewKind;
+      let nextPreviewObjectUrl: string | undefined = existingItem?.previewObjectUrl;
+
+      if (payload.previewFile) {
+        if (existingItem?.previewObjectUrl) {
+          URL.revokeObjectURL(existingItem.previewObjectUrl);
+        }
+        nextPreviewBlob = payload.previewFile;
+        nextPreviewKind = isImageFile(payload.previewFile) ? 'image' : 'video';
+        nextPreviewObjectUrl = URL.createObjectURL(payload.previewFile);
+      } else if (payload.removeExistingPreview) {
+        if (existingItem?.previewObjectUrl) {
+          URL.revokeObjectURL(existingItem.previewObjectUrl);
+        }
+        nextPreviewBlob = undefined;
+        nextPreviewKind = undefined;
+        nextPreviewObjectUrl = undefined;
+      }
+
+      const record: StoredPresetRecord = {
+        id,
+        title: payload.title,
+        category: payload.category,
+        description: payload.description,
+        fileName: nextFileName,
+        fileSize: nextFileSize,
+        fileType: nextFileType,
+        fileExt: nextFileExt,
+        fileBlob: nextFileBlob,
+        previewKind: nextPreviewKind,
+        previewBlob: nextPreviewBlob,
+        downloads: existingRecord?.downloads ?? 0,
+        createdAt: existingRecord?.createdAt ?? Date.now(),
+      };
+
+      await savePresetRecord(record);
+
+      const nextPreset: PresetItem = {
+        id: record.id,
+        title: record.title,
+        category: record.category,
+        description: record.description,
+        fileName: record.fileName,
+        fileSize: record.fileSize,
+        fileType: record.fileType,
+        fileExt: record.fileExt,
+        fileObjectUrl: nextFileObjectUrl,
+        previewKind: record.previewKind,
+        previewObjectUrl: nextPreviewObjectUrl,
+        downloads: record.downloads,
+        createdAt: record.createdAt,
+      };
+
+      setPresets((prev) =>
+        payload.id
+          ? prev.map((p) => (p.id === payload.id ? nextPreset : p))
+          : [nextPreset, ...prev]
+      );
+    },
+    []
+  );
+
+  const handleDeletePreset = useCallback(async (id: string) => {
+    const target = presetsRef.current.find((p) => p.id === id);
+    if (target) {
+      URL.revokeObjectURL(target.fileObjectUrl);
+      if (target.previewObjectUrl) {
+        URL.revokeObjectURL(target.previewObjectUrl);
+      }
+    }
+    await deletePresetRecord(id);
+    setPresets((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  const handleDownloadPreset = useCallback(async (preset: PresetItem) => {
+    const link = document.createElement('a');
+    link.href = preset.fileObjectUrl;
+    link.download = preset.fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    const nextCount = await incrementPresetDownload(preset.id);
+    setPresets((prev) =>
+      prev.map((p) => (p.id === preset.id ? { ...p, downloads: nextCount } : p))
+    );
+  }, []);
+
   const lightboxList = lightboxTarget === 'reels' ? reelsVideos : showreelVideos;
   const lightboxIdx = lightboxTarget === 'reels' ? reelsIndex : showreelIndex;
   const activeLightboxVideo =
@@ -607,10 +877,7 @@ export default function App() {
         aria-label="Upload images to Gallery"
       />
 
-      <Navbar
-        onTriggerUpload={() => showreelInputRef.current?.click()}
-        isProcessing={processingShowreels}
-      />
+      <Navbar onNavigateHome={currentPage === 'presets' ? navigateToHome : undefined} />
 
       <main className="relative z-10 flex-1 overflow-x-clip pt-[69px]">
         {notice && (
@@ -631,13 +898,31 @@ export default function App() {
           </div>
         )}
 
-        {/* Top Intro Section: Animated Sonu Purvey (Left) & Circular Tiger Image (Right), Centered */}
-        <HeroIntroShowcase />
+        {currentPage === 'presets' ? (
+          isHydrated ? (
+            <PresetsPage
+              presets={presets}
+              isProcessing={processingPresets}
+              onBackHome={navigateToHome}
+              onQuickUploadFiles={handleQuickUploadPresets}
+              onSavePreset={handleSavePreset}
+              onDeletePreset={handleDeletePreset}
+              onDownloadPreset={handleDownloadPreset}
+            />
+          ) : (
+            <div className="flex h-[420px] w-full items-center justify-center">
+              <p className="text-sm text-[#A89A8A]">Opening presets library...</p>
+            </div>
+          )
+        ) : (
+          <>
+            {/* Top Intro Section: Animated Sonu Purvey (Left) & Circular Tiger Image (Right), Centered */}
+            <HeroIntroShowcase />
 
-        {/* Flying Air Balloon Plane (Right to Left) with "Welcome Here" Banner */}
-        <ParallaxLayer offset={16}>
-          <WelcomeAirshipBanner />
-        </ParallaxLayer>
+            {/* Flying Air Balloon Plane (Right to Left) with "Welcome Here" Banner */}
+            <ParallaxLayer offset={16}>
+              <WelcomeAirshipBanner />
+            </ParallaxLayer>
 
         {/* Section 1: Upper 3D Stage — Showreels */}
         <section
@@ -645,10 +930,19 @@ export default function App() {
           className="mx-auto w-full max-w-[1440px] px-2 pt-4 pb-10 sm:px-6 lg:pt-6"
         >
           <ParallaxLayer offset={14}>
-            <div className="mb-4 px-2 sm:px-0">
+            <div className="mb-4 flex items-center justify-between gap-4 px-2 sm:px-0">
               <h2 className="text-2xl font-semibold tracking-tight text-[#FAF6F0] sm:text-3xl">
                 Showreels
               </h2>
+              <button
+                type="button"
+                onClick={() => showreelInputRef.current?.click()}
+                disabled={processingShowreels}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/40 bg-[#1B130E]/85 px-3.5 text-xs font-semibold text-[#FDBA74] transition-colors duration-150 hover:border-[#F97316] hover:bg-[#EA580C] hover:text-[#FFF7ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>{processingShowreels ? 'Adding...' : 'Upload Videos'}</span>
+              </button>
             </div>
           </ParallaxLayer>
 
@@ -663,6 +957,7 @@ export default function App() {
                 activeIndex={showreelIndex}
                 onActiveIndexChange={setShowreelIndex}
                 onFilesSelected={(files) => handleFilesSelected(files, 'showreels')}
+                onDeleteVideo={(id) => handleDeleteVideo(id, 'showreels')}
                 isPlaying={isShowreelsActive}
                 isMuted={audioSection !== 'showreels'}
                 audioUnlocked={audioUnlocked}
@@ -722,6 +1017,7 @@ export default function App() {
                   activeIndex={reelsIndex}
                   onActiveIndexChange={setReelsIndex}
                   onFilesSelected={(files) => handleFilesSelected(files, 'reels')}
+                  onDeleteVideo={(id) => handleDeleteVideo(id, 'reels')}
                   isPlaying={isReelsActive}
                   isMuted={audioSection !== 'reels'}
                   audioUnlocked={audioUnlocked}
@@ -766,6 +1062,8 @@ export default function App() {
           <ParallaxLayer offset={21}>
             <ExtraServicesSection
               services={services}
+              presetsCount={presets.length}
+              onOpenPresets={navigateToPresets}
               onSaveService={handleSaveService}
               onDeleteService={handleDeleteService}
             />
@@ -785,6 +1083,8 @@ export default function App() {
 
         {/* Section 5: Contact */}
         <ContactSection />
+          </>
+        )}
       </main>
 
       <footer
@@ -810,6 +1110,11 @@ export default function App() {
       <VideoLightbox
         video={activeLightboxVideo}
         onClose={() => setLightboxTarget(null)}
+        onDelete={
+          activeLightboxVideo
+            ? () => handleDeleteVideo(activeLightboxVideo.id, activeLightboxVideo.section)
+            : undefined
+        }
         onPrev={() => {
           if (lightboxTarget === 'reels') {
             setReelsIndex((i) => Math.max(0, i - 1));
